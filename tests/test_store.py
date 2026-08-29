@@ -60,3 +60,20 @@ class TestLocalFileStore:
         first = store.list_names()
         second = store.list_names()
         assert first == second
+
+    def test_placeholder_values_filtered(self, tmp_path):
+        secrets = {
+            "_comment": "metadata ignored",
+            "real-key": "sk_live_abc123",
+            "placeholder-key": "<stripe:sk_live_or_sk_test>",
+            "another-placeholder": "<ga4:oauth-or-sa-key-json>",
+        }
+        path = tmp_path / ".secrets.json"
+        path.write_text(json.dumps(secrets), encoding="utf-8")
+        store = LocalFileStore(str(path))
+        names = store.list_names()
+        assert "real-key" in names
+        assert "placeholder-key" not in names
+        assert "another-placeholder" not in names
+        assert "_comment" not in names
+        assert len(names) == 1

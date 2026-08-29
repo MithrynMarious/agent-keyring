@@ -11,6 +11,7 @@ import json
 import os
 import abc
 import logging
+import re
 
 log = logging.getLogger("keyring.store")
 
@@ -40,6 +41,8 @@ class LocalFileStore(SecretStore):
         self._path = path
         self._cache: dict[str, str] | None = None
 
+    _PLACEHOLDER_RE = re.compile(r"^<[a-z0-9_-]+:[a-z0-9_-]+>$", re.IGNORECASE)
+
     def _load(self) -> dict[str, str]:
         if self._cache is not None:
             return self._cache
@@ -47,7 +50,18 @@ class LocalFileStore(SecretStore):
             log.warning("Secret store file not found: %s", self._path)
             return {}
         with open(self._path, encoding="utf-8") as f:
-            self._cache = json.load(f)
+            raw = json.load(f)
+        placeholders = 0
+        self._cache = {}
+        for k, v in raw.items():
+            if k.startswith("_"):
+                continue
+            if isinstance(v, str) and self._PLACEHOLDER_RE.match(v):
+                placeholders += 1
+                continue
+            self._cache[k] = v
+        if placeholders:
+            log.warning("Skipped %d placeholder entries — replace them in .secrets.json with real values", placeholders)
         log.info("Loaded %d secrets from local store", len(self._cache))
         return self._cache
 
