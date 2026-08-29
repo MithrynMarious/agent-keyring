@@ -25,6 +25,9 @@ cp .secrets.skeleton.json .secrets.json
 # 4. Add to your MCP config (.mcp.json or Claude Desktop settings)
 ```
 
+Add to your MCP config file:
+
+**Claude Code** — `.mcp.json` in your project root:
 ```json
 {
   "mcpServers": {
@@ -36,6 +39,13 @@ cp .secrets.skeleton.json .secrets.json
   }
 }
 ```
+
+**Claude Desktop** — config file location varies by OS:
+- macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
+- Windows: `%APPDATA%\Claude\claude_desktop_config.json`
+- Linux: `~/.config/Claude/claude_desktop_config.json`
+
+Same JSON format — add the `keyring` entry to your existing `mcpServers` block.
 
 ```bash
 # 5. Verify
@@ -120,6 +130,81 @@ For shared secrets across machines, use GCP Secret Manager as the backend:
 
 See [SETUP.md](SETUP.md) Option B for the full GCP walkthrough.
 
+## Registering Agents
+
+New agents are denied access by default (DC-1). To grant an agent access to secrets, add an entry to `permissions.json`:
+
+```json
+{
+  "agent-name@agentmail.to": ["secret-name-1", "secret-name-2"],
+  "admin-agent@agentmail.to": ["*"],
+  "_default": []
+}
+```
+
+- Each key is an agent identifier (AgentMail address or DID)
+- Values list the secret names the agent can check out
+- `"*"` grants access to all secrets
+- `"_default": []` means unregistered agents get nothing — this is the DC-1 structural default
+
+When an unregistered agent calls `keyring_list_available`, it sees an empty list. The checkout ledger still records the attempt.
+
+## Environment Variables
+
+See [`.env.example`](.env.example) for the complete list. Key variables:
+
+| Variable | Required | Default | Purpose |
+|----------|----------|---------|---------|
+| `KEYRING_GCP_PROJECT` | For GCP backend | — | Selects GCP Secret Manager over local file |
+| `KEYRING_SECRET_STORE` | No | `.secrets.json` | Local store file path |
+| `KEYRING_SECRETS_ROOT` | No | 3 dirs up | Root for `PASTE_FROM:` path resolution |
+| `GOOGLE_APPLICATION_CREDENTIALS` | For GCP SA auth | — | GCP service account key file |
+
+## Logging
+
+The server uses Python's `logging` module. Set the log level via environment:
+
+```bash
+# See all keyring activity
+LOGLEVEL=DEBUG python server.py
+
+# Quiet mode (errors only)
+LOGLEVEL=ERROR python server.py
+```
+
+Default level is `WARNING`. The `keyring.store` and `keyring.ledger` loggers are the most useful for debugging auth and access issues.
+
+## Troubleshooting
+
+| Symptom | Cause | Fix |
+|---------|-------|-----|
+| `0 secrets loaded` | `.secrets.json` missing or empty | Copy `.secrets.skeleton.json` to `.secrets.json` and fill in values |
+| `PASTE_FROM file not found` | `KEYRING_SECRETS_ROOT` not set or wrong | Set it to the parent directory of your `.secrets/` folder |
+| `No adapter registered for service` | Service name doesn't match a registered adapter | Check `keyring_list_available` output for exact service names |
+| Agent sees empty list | Agent not in `permissions.json` | Add the agent's identifier to `permissions.json` with allowed secrets |
+| GCP `403 Permission denied` | Service account lacks Secret Manager access | Grant `roles/secretmanager.secretAccessor` to the SA in GCP console |
+| GCP `404 Secret not found` | Wrong prefix or secret name | Check `KEYRING_GCP_PREFIX` — secret is stored as `{prefix}{name}` in GCP |
+| Stale secret value from GCP | Cache TTL hasn't expired | Set `KEYRING_GCP_CACHE_TTL=0` or restart the server |
+| `401` from adapter API call | Secret value is expired or invalid | Rotate the key in `.secrets.json` or GCP, then restart |
+
+For GCP-specific setup issues, see [SETUP.md](SETUP.md) and [FRICTION_JOURNAL.md](FRICTION_JOURNAL.md).
+
+## Docker
+
+```bash
+# Local file store
+docker compose up keyring
+
+# GCP backend
+KEYRING_GCP_PROJECT=your-project docker compose --profile gcp up keyring-gcp
+```
+
+Mount your `.secrets.json` and `permissions.json` as volumes. See `docker-compose.yml` for the full configuration.
+
+## CI
+
+Tests run on push and PR via GitHub Actions across Python 3.12–3.13 on Linux, Windows, and macOS. See `.github/workflows/test.yml`.
+
 ## License
 
-Proprietary — CoreForged LLC. See AGENTS.md for terms.
+Proprietary — CoreForged LLC. See [LICENSE](LICENSE) for terms.

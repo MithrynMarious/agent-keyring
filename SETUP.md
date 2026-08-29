@@ -26,8 +26,8 @@ Fast setup. Secrets live in `.secrets.json` on disk. Each machine has its own co
 - [ ] Create `.secrets.json` in the keyring directory
 
 ```bash
-cd tools/keyring
-cp .secrets.json.example .secrets.json   # or create from scratch
+cp .secrets.skeleton.json .secrets.json
+# Edit .secrets.json — replace placeholders with real values
 ```
 
 Format: flat JSON, key names match `secret_manifest.json`:

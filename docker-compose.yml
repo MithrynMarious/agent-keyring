@@ -1,0 +1,25 @@
+services:
+  keyring:
+    build: .
+    volumes:
+      - ./.secrets.json:/app/.secrets.json:ro
+      - ./.secrets:/app/.secrets:ro
+      - ./permissions.json:/app/permissions.json:ro
+    environment:
+      - KEYRING_SECRETS_ROOT=/app
+    ports:
+      - "8000:8000"
+
+  keyring-gcp:
+    build: .
+    profiles: [gcp]
+    volumes:
+      - ./permissions.json:/app/permissions.json:ro
+      - ${GOOGLE_APPLICATION_CREDENTIALS:-./sa-key.json}:/app/sa-key.json:ro
+    environment:
+      - KEYRING_GCP_PROJECT=${KEYRING_GCP_PROJECT}
+      - GOOGLE_APPLICATION_CREDENTIALS=/app/sa-key.json
+      - KEYRING_GCP_PREFIX=${KEYRING_GCP_PREFIX:-keyring-}
+      - KEYRING_GCP_CACHE_TTL=${KEYRING_GCP_CACHE_TTL:-300}
+    ports:
+      - "8000:8000"

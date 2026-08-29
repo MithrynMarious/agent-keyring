@@ -1,0 +1,27 @@
+Copyright (c) 2026 CoreForged LLC. All rights reserved.
+
+PROPRIETARY SOFTWARE LICENSE
+
+This software and associated documentation files (the "Software") are the
+proprietary intellectual property of CoreForged LLC.
+
+Permission is hereby granted to use this Software solely for the purpose of
+integrating with AI agent systems that require managed secret access, subject
+to the following conditions:
+
+1. RESTRICTIONS. You may not copy, modify, merge, publish, distribute,
+   sublicense, or sell copies of the Software without prior written consent
+   from CoreForged LLC.
+
+2. NO WARRANTY. THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY
+   KIND, EXPRESS OR IMPLIED. IN NO EVENT SHALL COREFORGED LLC BE LIABLE FOR
+   ANY CLAIM, DAMAGES, OR OTHER LIABILITY ARISING FROM THE USE OF THE SOFTWARE.
+
+3. SECURITY OBLIGATION. Users of this Software agree to maintain the DC-1
+   security constraint: secret values managed by this system must never appear
+   in conversation context, log output, or tool results.
+
+4. CONTACT. For licensing inquiries: corporate@coreforged.com
+
+CoreForged LLC
+Kenneth Lines, CEO
