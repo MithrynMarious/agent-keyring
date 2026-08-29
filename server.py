@@ -259,6 +259,36 @@ def _load_adapters():
     except ImportError:
         log.warning("GA4 adapter not available (missing cryptography or adapters/ga4.py)")
 
+    try:
+        from adapters.stripe import stripe_adapter
+        _adapters["stripe"] = stripe_adapter
+    except ImportError:
+        log.warning("Stripe adapter not available")
+
+    try:
+        from adapters.supabase import supabase_adapter
+        _adapters["supabase"] = supabase_adapter
+    except ImportError:
+        log.warning("Supabase adapter not available")
+
+    try:
+        from adapters.anthropic import anthropic_adapter
+        _adapters["anthropic"] = anthropic_adapter
+    except ImportError:
+        log.warning("Anthropic adapter not available")
+
+    try:
+        from adapters.github import github_adapter
+        _adapters["github"] = github_adapter
+    except ImportError:
+        log.warning("GitHub adapter not available")
+
+    try:
+        from adapters.discord import discord_adapter
+        _adapters["discord"] = discord_adapter
+    except ImportError:
+        log.warning("Discord adapter not available")
+
 
 def _agentmail_adapter(
     secret: str,
@@ -301,5 +331,9 @@ def _agentmail_adapter(
         return {"error": str(e)}
 
 
-if __name__ == "__main__":
+def main():
     mcp.run()
+
+
+if __name__ == "__main__":
+    main()

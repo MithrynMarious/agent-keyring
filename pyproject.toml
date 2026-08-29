@@ -1,0 +1,47 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[project]
+name = "agent-keyring"
+version = "0.1.0"
+description = "MCP server for sovereign secrets — API keys never enter agent context"
+readme = "README.md"
+requires-python = ">=3.12"
+license = {text = "Proprietary"}
+authors = [{name = "CoreForged LLC", email = "corporate@coreforged.com"}]
+
+dependencies = [
+    "mcp[cli]>=1.0.0",
+]
+
+[project.optional-dependencies]
+gcp = ["cryptography>=42.0"]
+all = ["cryptography>=42.0"]
+test = ["pytest>=8.0", "pytest-asyncio>=0.23"]
+
+[project.scripts]
+agent-keyring = "server:main"
+
+[tool.setuptools]
+py-modules = [
+    "server",
+    "secret_store",
+    "identity",
+    "ledger",
+    "add_secret",
+    "consolidate",
+    "connectivity_test",
+    "key_monitor",
+    "seed_gcp",
+    "taxonomy",
+    "populate_secrets",
+    "discover_supabase_pat",
+    "supabase_mcp_launcher",
+]
+
+[tool.setuptools.packages.find]
+include = ["adapters*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
