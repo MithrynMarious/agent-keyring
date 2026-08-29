@@ -145,11 +145,11 @@ def keyring_authenticated_request(
     Every call is logged to the checkout ledger.
 
     Args:
-        service: Service identifier (e.g. 'agentmail', 'stripe', 'ga4', 'firebase').
+        service: Service identifier (e.g. 'agentmail', 'stripe', 'ga4', 'firebase'). For unregistered services, pass any name — the generic adapter handles the request if base_url is in params.
         secret_name: Name of the secret to use (from keyring_list_available).
         method: HTTP method (GET, POST, PUT, DELETE).
         endpoint: API endpoint path (appended to service base URL).
-        params: Query parameters for the request.
+        params: Query parameters for the request. For unregistered services, include: base_url (required), auth_type ('bearer'|'header'|'basic'|'query', default 'bearer'), auth_header (header name when auth_type='header').
         body: JSON body for POST/PUT requests.
         scope: Optional scope for multi-value keys (e.g. 'fleet', 'mcp'). When set, tries secret_name:scope first, falls back to secret_name.
         purpose: Why this request is being made (logged to ledger).
@@ -184,8 +184,24 @@ def keyring_authenticated_request(
 
     try:
         adapter = _get_adapter(service)
+
         if adapter is None:
-            return {"error": f"No adapter registered for service '{service}'."}
+            runtime_config = _extract_runtime_config(params)
+            if runtime_config:
+                from adapters.generic import generic_adapter
+                result = generic_adapter(
+                    secret=secret_value,
+                    method=method,
+                    endpoint=endpoint,
+                    params=params,
+                    body=body,
+                    service_config=runtime_config,
+                )
+                return result
+            return {
+                "error": f"No adapter registered for service '{service}'.",
+                "hint": "Pass base_url and auth_type in params to use the generic adapter.",
+            }
 
         result = adapter(
             secret=secret_value,
@@ -239,6 +255,33 @@ def keyring_agent_affinity(days: int = 30) -> dict:
         days: How far back to analyze (default 30).
     """
     return agent_affinity_report(days=days)
+
+
+def _extract_runtime_config(params: dict | None) -> dict | None:
+    """Extract generic adapter config from request params.
+
+    Allows callers to use unregistered services by passing auth config
+    at call time: base_url (required), auth_type, auth_header.
+    Returns None if no runtime config is present.
+    """
+    if not params:
+        return None
+    base_url = params.get("base_url")
+    auth_type = params.get("auth_type")
+    if not base_url and not auth_type:
+        return None
+    config = {}
+    if base_url:
+        config["base_url"] = params.pop("base_url")
+    if auth_type:
+        config["auth"] = params.pop("auth_type")
+    else:
+        config["auth"] = "bearer"
+    if "auth_header" in params:
+        config["auth_header"] = params.pop("auth_header")
+    if "auth_param" in params:
+        config["auth_param"] = params.pop("auth_param")
+    return config
 
 
 # --- Service Adapters ---
