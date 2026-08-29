@@ -15,7 +15,9 @@ The agent says *what* to do ("query GA4 for sessions"). The keyring handles *how
 git clone https://github.com/MithrynMarious/agent-keyring.git
 cd agent-keyring
 
-# 2. Install
+# 2. Create a virtual environment and install
+python3 -m venv .venv
+source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install .
 
 # 3. Copy the skeleton and fill in your keys
