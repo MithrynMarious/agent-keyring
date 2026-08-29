@@ -3,17 +3,26 @@
 How to get the keyring running on a new machine. Two backends:
 local file (quick, single-machine) or GCP Secret Manager (shared across machines).
 
+**Pick your path, then work the checklist. Each step has a checkbox — check it off
+when done so you can resume if interrupted.**
+
+---
+
 ## Prerequisites
 
-- Python 3.12+
-- The `claudecode` repo cloned
-- `pip install mcp[cli]` (the only hard dependency)
+- [ ] Python 3.12+ installed
+- [ ] Repo cloned (or standalone `agent-keyring` repo)
+- [ ] `pip install mcp[cli]` (the only hard dependency)
+
+---
 
 ## Option A: Local File Store (Single Machine)
 
 Fast setup. Secrets live in `.secrets.json` on disk. Each machine has its own copy.
 
-### 1. Create the secrets file
+### A-1: Create the secrets file
+
+- [ ] Create `.secrets.json` in the keyring directory
 
 ```bash
 cd tools/keyring
@@ -31,12 +40,13 @@ Format: flat JSON, key names match `secret_manifest.json`:
 
 The file is gitignored. Never commit it.
 
-### 2. Populate secrets
+### A-2: Populate secrets
+
+- [ ] Add at least one secret to `.secrets.json`
 
 **Add a single secret:**
 
 ```bash
-cd tools/keyring
 python add_secret.py supabase-access-token          # prompts for value interactively
 echo "sbp_your_token" | python add_secret.py supabase-access-token  # piped (scripting)
 python add_secret.py supabase-access-token --verify  # add + confirm it wrote
@@ -62,9 +72,9 @@ python consolidate.py audit .secrets.json
 **Manual secure transfer:** Copy `.secrets.json` via USB drive, encrypted archive,
 or a secure channel. Never email, Slack, or commit it.
 
-### 3. Register the MCP server
+### A-3: Register the MCP server
 
-Add to `.mcp.json` in your Claude Code config (or the repo root):
+- [ ] Add keyring to `.mcp.json`
 
 ```json
 {
@@ -78,27 +88,37 @@ Add to `.mcp.json` in your Claude Code config (or the repo root):
 }
 ```
 
-### 4. Test
+### A-4: Verify local store works
+
+- [ ] Run the verification command and confirm secrets load
 
 ```bash
-cd tools/keyring
 python -c "from secret_store import LocalFileStore; s = LocalFileStore('.secrets.json'); print(f'{len(s.list_names())} secrets loaded')"
 ```
 
+**Expected:** A number > 0 followed by "secrets loaded". If 0, check that `.secrets.json`
+exists and has entries.
+
+**You're done with Option A.** Skip to [Health Monitoring](#health-monitoring) or
+[Keyring-Backed MCP Servers](#keyring-backed-mcp-servers) for optional next steps.
+
+---
+
 ## Option B: GCP Secret Manager (Multi-Machine)
 
-Both machines read from the same GCP project. No `.secrets.json` on disk.
+Both machines read from the same GCP project. No `.secrets.json` on disk after migration.
 Secrets are created once in GCP and accessible from any authenticated machine.
 
-### 1. GCP project setup
+### B-1: Enable GCP APIs
 
-Pick or create a GCP project. Enable the Secret Manager API:
+- [ ] Enable Secret Manager API
+- [ ] Enable Analytics APIs (if needed for GA4 adapter)
 
 ```bash
 gcloud services enable secretmanager.googleapis.com --project=YOUR_PROJECT_ID
 ```
 
-If you also need Analytics APIs, enable them now:
+If you also need Analytics APIs:
 
 ```bash
 gcloud services enable analyticsdata.googleapis.com --project=YOUR_PROJECT_ID
@@ -110,7 +130,13 @@ gcloud services enable tagmanager.googleapis.com --project=YOUR_PROJECT_ID
 > match below similarly-named APIs (Google Analytics Admin, Google Analytics). The one
 > the keyring's GA4 adapter calls is **Analytics Data API** (analyticsdata.googleapis.com).
 
-### 1b. Create a service account
+### B-2: Create a service account
+
+- [ ] Create service account in IAM & Admin
+- [ ] Grant Secret Manager Secret Accessor role
+- [ ] Download JSON key
+- [ ] Rename key file for traceability
+- [ ] Place key in `.secrets/` directory
 
 Go to **IAM & Admin > Service Accounts > Create Service Account** (top-level nav, not
 inside a specific API page).
@@ -134,7 +160,9 @@ your `.secrets/` directory. Run `python consolidate.py ingest` to register it.
 > - **Key download uses Google's naming** (project-hexhash.json), not yours. Rename it to
 >   something traceable before dropping it in `.secrets/`.
 
-### 2. Upload secrets to GCP
+### B-3: Upload secrets to GCP
+
+- [ ] Upload at least one secret to GCP Secret Manager
 
 Each secret is stored with the prefix `keyring-` (configurable). Create them:
 
@@ -161,9 +189,19 @@ echo -n "new_value" | gcloud secrets versions add keyring-agentmail-api-key \
   --data-file=- --project=YOUR_PROJECT_ID
 ```
 
-### 3. Authenticate
+**Bulk migration from local store:** If you have a populated `.secrets.json`, use the
+seed script instead of uploading one by one:
 
-**Option 3a: Application Default Credentials (developer machines)**
+```bash
+python seed_gcp.py YOUR_PROJECT_ID --dry-run    # preview
+python seed_gcp.py YOUR_PROJECT_ID              # upload all
+```
+
+### B-4: Authenticate the machine
+
+- [ ] Set up GCP authentication (pick one sub-option)
+
+**Option B-4a: Application Default Credentials (developer machines)**
 
 ```bash
 gcloud auth application-default login
@@ -173,7 +211,7 @@ This creates `~/.config/gcloud/application_default_credentials.json` (Linux/Mac)
 or `%APPDATA%\gcloud\application_default_credentials.json` (Windows). The keyring
 finds it automatically.
 
-**Option 3b: Service account key (CI/headless)**
+**Option B-4b: Service account key (CI/headless)**
 
 Download a service account key JSON with `Secret Manager Secret Accessor` role:
 
@@ -197,14 +235,15 @@ export KEYRING_GCP_SA_KEY=/path/to/sa-key.json     # Linux/Mac
 $env:KEYRING_GCP_SA_KEY = "C:\path\to\sa-key.json" # Windows PowerShell
 ```
 
-**Option 3c: GCE/Cloud Run (automatic)**
+**Option B-4c: GCE/Cloud Run (automatic)**
 
 On Compute Engine or Cloud Run, the keyring uses the metadata server automatically.
 Attach the `Secret Manager Secret Accessor` role to the instance's service account.
 
-### 4. Configure environment
+### B-5: Configure environment
 
-Set these before starting the keyring server:
+- [ ] Set `KEYRING_GCP_PROJECT` environment variable
+- [ ] Register MCP server in `.mcp.json`
 
 | Variable | Required | Default | Purpose |
 |----------|----------|---------|---------|
@@ -230,10 +269,11 @@ Example `.mcp.json` with GCP:
 }
 ```
 
-### 5. Test
+### B-6: Verify GCP store works
+
+- [ ] Run the verification command and confirm secrets are accessible
 
 ```bash
-cd tools/keyring
 KEYRING_GCP_PROJECT=YOUR_PROJECT_ID python -c "
 from secret_store import GCPSecretManagerStore
 s = GCPSecretManagerStore('YOUR_PROJECT_ID')
@@ -242,66 +282,79 @@ print(f'{len(names)} secrets found: {names[:5]}...')
 "
 ```
 
-## Migrating from Local to GCP
+**Expected:** A number > 0 followed by your secret names. If 0, check:
+1. The secrets exist with the prefix: `gcloud secrets list --project=YOUR_PROJECT_ID --filter="name:keyring-"`
+2. The authenticated identity has `secretmanager.secretAccessor` role
 
-If you already have a populated `.secrets.json` and want to move to GCP:
+**You're done with Option B.** Continue below for optional features.
+
+---
+
+## Post-Setup (Optional)
+
+These steps are independent — do any, all, or none.
+
+### Skeleton Keyring (DC-1 Structural Fix)
+
+- [ ] Generate the skeleton file (if not already present)
+
+The skeleton file (`.secrets.skeleton.json`) provides the shape of the keyring — every key
+name with a `<service:key-name>` placeholder — without values. Agents read the skeleton
+to understand what's available. This is Construction Type 1: the skeleton IS the data
+agents need, making reading `.secrets.json` unnecessary.
+
+The skeleton is committed to git and safe to read in any context.
 
 ```bash
-# Upload each secret from the local file
-python -c "
-import json, subprocess, sys
-with open('.secrets.json') as f:
-    secrets = json.load(f)
-project = sys.argv[1]
-prefix = sys.argv[2] if len(sys.argv) > 2 else 'keyring-'
-for name, value in secrets.items():
-    gcp_name = f'{prefix}{name}'
-    print(f'Creating {gcp_name}...')
-    proc = subprocess.run(
-        ['gcloud', 'secrets', 'create', gcp_name,
-         '--data-file=-', f'--project={project}'],
-        input=value.encode(), capture_output=True
-    )
-    if proc.returncode != 0:
-        err = proc.stderr.decode()
-        if 'ALREADY_EXISTS' in err:
-            print(f'  Already exists, adding new version...')
-            subprocess.run(
-                ['gcloud', 'secrets', 'versions', 'add', gcp_name,
-                 '--data-file=-', f'--project={project}'],
-                input=value.encode(), check=True
-            )
-        else:
-            print(f'  ERROR: {err}')
-" YOUR_PROJECT_ID
+python consolidate.py sync-skeleton
 ```
 
-Then switch `.mcp.json` to use `KEYRING_GCP_PROJECT` and remove `.secrets.json` from the machine.
+### The `.secrets/` Directory
 
-## Permissions
+- [ ] Create a `.secrets/` directory for credential files (if using file-based secrets)
 
-`permissions.json` and `secret_manifest.json` travel with the repo (they contain no secret values).
-They work identically with both backends. The agent's identity (DID or AgentMail address) determines
-which secrets they can check out, regardless of where those secrets are stored.
+Place secret files (API keys, credentials, service account JSONs) in a `.secrets/`
+directory. This directory should be gitignored and live outside the repo. Set the
+`KEYRING_SECRETS_ROOT` environment variable to point at the parent of `.secrets/`
+if it's not 3 directories up from the keyring.
+
+Supported file types for ingest: `.txt`, `.env`, `.json`.
+
+```bash
+python consolidate.py ingest              # register all new files
+python consolidate.py ingest --dry-run    # preview without changing anything
+```
+
+Ingest scans `.secrets/` for supported files, creates `PASTE_FROM:` references in
+`.secrets.json` (values stay in the source files — not copied), adds entries to
+`secret_manifest.json`, and auto-syncs the skeleton.
+
+### Adding a New Secret (Three Paths)
+
+**Path 1 — File-based (recommended):**
+- [ ] Place the file in your `.secrets/` directory
+- [ ] Run `python consolidate.py ingest`
+- [ ] Edit `secret_manifest.json` to improve the description and service tag
+
+**Path 2 — Interactive:**
+- [ ] Run `python add_secret.py my-secret-name` (value read from stdin)
+- [ ] Run `python consolidate.py sync-skeleton`
+
+**Path 3 — Bulk discovery:**
+- [ ] `python consolidate.py scan ~/projects` (find scattered credentials)
+- [ ] `python consolidate.py migrate ~/projects -t .secrets/` (collect them)
+- [ ] `python consolidate.py generate .secrets/` (generate keyring files)
+- [ ] `python consolidate.py audit .secrets.json .secrets/` (verify sync)
+
+---
 
 ## Health Monitoring
+
+- [ ] Run `python key_monitor.py` (optional — confirms all services are reachable)
 
 The keyring includes a health monitor that checks connectivity, tracks key rotation age,
 and flags stale credentials. Run it on demand — no daemon, no OS scheduler. Works on
 Windows, macOS, and Linux (pure Python stdlib).
-
-### Quick check
-
-```bash
-cd tools/keyring
-python key_monitor.py
-```
-
-This does three things in one pass:
-1. Tests all 18 services with minimal health-check API calls
-2. Hashes each key value (SHA-256, DC-1 safe) and compares against stored hashes
-   to detect rotation — first run establishes the baseline
-3. Appends results to `health_log.jsonl` and writes `health_status.json`
 
 ### Commands
 
@@ -314,7 +367,7 @@ This does three things in one pass:
 | `python key_monitor.py --html path/out.html` | Dashboard at a custom path |
 | `python key_monitor.py --history 10` | Show last 10 check summaries from the log |
 
-### Health states
+### Health States
 
 | State | Meaning | Action |
 |-------|---------|--------|
@@ -323,9 +376,7 @@ This does three things in one pass:
 | **Failing** | API returns error (401, 403, timeout) | Investigate — key may be revoked or permissions changed |
 | **Empty** | No credential in the store for this service | Add the credential or confirm it's intentionally absent |
 
-### Rotation thresholds
-
-Keys are categorized by type, each with a default staleness threshold:
+### Rotation Thresholds
 
 | Category | Threshold | Examples |
 |----------|-----------|----------|
@@ -336,13 +387,12 @@ Keys are categorized by type, each with a default staleness threshold:
 | `jwt` | 180 days | JWT signing secrets |
 | `url` | no expiry | Service URLs (track changes, not age) |
 
-### Recommended cadence
+### Recommended Cadence
 
 Run `python key_monitor.py` daily or at session start. The `--status` command shows
 the latest snapshot without making API calls — use it for quick checks between full runs.
-Add it to your Seidrbook or session-start ritual.
 
-### Files produced (all gitignored)
+### Files Produced (All Gitignored)
 
 | File | Purpose |
 |------|---------|
@@ -351,9 +401,7 @@ Add it to your Seidrbook or session-start ritual.
 | `key_rotation.json` | Hash-based rotation tracking (first_seen, last_changed per key) |
 | `dashboard.html` | Self-contained HTML dashboard (regenerated on `--html`) |
 
-### Integration with other tools
-
-The `--json` output is designed for consumption by dashboards and automation:
+### Integration with Other Tools
 
 ```python
 import json, subprocess
@@ -362,15 +410,7 @@ status = json.loads(result.stdout)
 failing = [s for s in status["services"] if s["health"] == "failing"]
 ```
 
-## Troubleshooting
-
-**"No GCP credentials found"** — Run `gcloud auth application-default login` or set `KEYRING_GCP_SA_KEY`.
-
-**"Failed to access secret X"** — Check (1) the secret exists with the prefix: `gcloud secrets list --project=YOUR_PROJECT_ID --filter="name:keyring-"`, (2) the authenticated identity has `secretmanager.secretAccessor` role.
-
-**Stale cached values after rotation** — The store caches for 5 minutes by default. Set `KEYRING_GCP_CACHE_TTL=0` to disable, or restart the MCP server.
-
-**"google-cloud-secret-manager not installed"** — Not required. The keyring uses the REST API directly. Install it for slightly faster list operations: `pip install google-cloud-secret-manager`.
+---
 
 ## Keyring-Backed MCP Servers
 
@@ -380,13 +420,14 @@ the keyring store and injects the credential as an environment variable.
 
 ### Supabase MCP Server
 
+- [ ] (Optional) Set up keyring-backed Supabase MCP server
+
 The Supabase MCP server (`@supabase/mcp-server-supabase`) needs a personal access
 token (PAT) as `SUPABASE_ACCESS_TOKEN`. The keyring launcher handles this:
 
 **1. Add the PAT to the keyring (one time):**
 
 ```bash
-cd tools/keyring
 python add_secret.py supabase-access-token
 # Paste your PAT from https://supabase.com/dashboard/account/tokens
 ```
@@ -398,7 +439,7 @@ python add_secret.py supabase-access-token
   "mcpServers": {
     "supabase": {
       "command": "python",
-      "args": ["C:/CrystallineCity/claudecode/tools/keyring/supabase_mcp_launcher.py"]
+      "args": ["tools/keyring/supabase_mcp_launcher.py"]
     }
   }
 }
@@ -406,7 +447,6 @@ python add_secret.py supabase-access-token
 
 The launcher reads the token from `.secrets.json`, sets it as an environment variable,
 and spawns the Supabase MCP server. The agent never sees the raw token — DC-1 compliant.
-Both Sofer and Rowan workstations use the same launcher and the same keyring store.
 
 ### Adding Launchers for Other MCP Servers
 
@@ -414,66 +454,38 @@ Follow the same pattern: a Python script that reads a secret by name, sets the
 environment variable the MCP server expects, and `subprocess.run`s the server.
 See `supabase_mcp_launcher.py` as a template.
 
-## Skeleton Keyring (DC-1 Structural Fix)
+---
 
-The skeleton file (`.secrets.skeleton.json`) provides the shape of the keyring — every key
-name with a `<service:key-name>` placeholder — without values. Agents read the skeleton
-to understand what's available. This is Construction Type 1: the skeleton IS the data
-agents need, making reading `.secrets.json` unnecessary.
+## Permissions
 
-The skeleton is committed to git and safe to read in any context.
+`permissions.json` and `secret_manifest.json` travel with the repo (they contain no secret
+values). They work identically with both backends. The agent's identity (DID or AgentMail
+address) determines which secrets they can check out, regardless of where those secrets
+are stored.
 
-### Rebuilding the Skeleton
+---
 
-```bash
-cd tools/keyring
-python consolidate.py sync-skeleton
-```
+## Troubleshooting
 
-Reads `.secrets.json` keys (not values), cross-references `secret_manifest.json` for
-service tags, writes `.secrets.skeleton.json` with `<service:key-name>` placeholders.
+**"No GCP credentials found"**
+- Run `gcloud auth application-default login` or set `KEYRING_GCP_SA_KEY`.
 
-Run `sync-skeleton` after adding or removing secrets.
+**"Failed to access secret X"**
+- Check the secret exists with the prefix: `gcloud secrets list --project=YOUR_PROJECT_ID --filter="name:keyring-"`
+- Check the authenticated identity has `secretmanager.secretAccessor` role.
 
-### The `.secrets/` Directory
+**"0 secrets loaded" (local store)**
+- Verify `.secrets.json` exists in the keyring directory.
+- Verify it has entries (not just `{}`).
+- If using `PASTE_FROM:` references, verify `KEYRING_SECRETS_ROOT` points to the right directory.
 
-Place secret files (API keys, credentials, service account JSONs) in
-`C:\CrystallineCity\.secrets\`. This directory is gitignored and lives outside the repo.
+**Stale cached values after rotation**
+- The store caches for 5 minutes by default. Set `KEYRING_GCP_CACHE_TTL=0` to disable, or restart the MCP server.
 
-Supported file types for ingest: `.txt`, `.env`, `.json`.
+**"google-cloud-secret-manager not installed"**
+- Not required. The keyring uses the REST API directly. Install it for slightly faster list operations: `pip install google-cloud-secret-manager`.
 
-### Ingesting Secrets from `.secrets/`
-
-```bash
-cd tools/keyring
-python consolidate.py ingest              # register all new files
-python consolidate.py ingest --dry-run    # preview without changing anything
-```
-
-Ingest scans `.secrets/` for supported files, creates `PASTE_FROM:` references in
-`.secrets.json` (values stay in the source files — not copied), adds entries to
-`secret_manifest.json`, and auto-syncs the skeleton.
-
-The `PASTE_FROM:` pattern means values live in exactly one place. The keyring store
-points to the source file; secrets are never duplicated.
-
-### Workflow: Adding a New Secret
-
-**Option A — File-based (recommended):**
-1. Place the file in `C:\CrystallineCity\.secrets\`
-2. `python consolidate.py ingest`
-3. Edit `secret_manifest.json` to improve the description and service tag (ingest
-   auto-generates names from filenames, which can be verbose)
-
-**Option B — Interactive:**
-1. `python add_secret.py my-secret-name` (value read from stdin, never CLI args)
-2. `python consolidate.py sync-skeleton`
-
-**Option C — Bulk discovery:**
-1. `python consolidate.py scan ~/projects` (find scattered credentials)
-2. `python consolidate.py migrate ~/projects -t .secrets/` (collect them)
-3. `python consolidate.py generate .secrets/` (generate keyring files)
-4. `python consolidate.py audit .secrets.json .secrets/` (verify sync)
+---
 
 ## Security Reminders
 
