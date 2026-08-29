@@ -1,0 +1,21 @@
+# Secrets — never commit
+.secrets.json
+.secrets/
+
+# Runtime data
+checkout_ledger.jsonl
+did_registry.json
+health_log.jsonl
+health_status.json
+key_rotation.json
+dashboard.html
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+.venv/
+venv/

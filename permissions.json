@@ -1,0 +1,34 @@
+{
+  "_comment": "Agent-to-secret access control. Keys are agent identifiers (DID or AM address). Values are lists of secret names the agent may check out. '*' grants access to all secrets.",
+  "sofer@agentmail.to": [
+    "agentmail-api-key",
+    "firebase-sa-key",
+    "stripe-secret-key",
+    "stripe-publishable-key",
+    "ga4-credentials",
+    "supabase-url",
+    "supabase-service-key",
+    "supabase-access-token",
+    "cf-crm-supabase-url",
+    "cf-crm-supabase-key",
+    "pinax-crypto-key",
+    "pinax-supabase-jwt-secret",
+    "pinax-google-client-secrets",
+    "google-oauth-578790412002",
+    "anthropic-api-key",
+    "bifrost-discord-token",
+    "bifrost-claude-api-key"
+  ],
+  "mark42@agentmail.to": [
+    "agentmail-api-key",
+    "firebase-sa-key",
+    "supabase-url",
+    "supabase-service-key",
+    "supabase-access-token",
+    "anthropic-api-key"
+  ],
+  "coreforged@agentmail.to": [
+    "agentmail-api-key"
+  ],
+  "_default": []
+}

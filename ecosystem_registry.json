@@ -1,0 +1,663 @@
+{
+  "_comment": "Universal service registry — API key shapes, env vars, and archetype mappings across the ecosystem. NO secret values. Source: training data patterns + Whetstone research.",
+
+  "categories": {
+    "payments": {
+      "description": "Payment processing, billing, subscriptions",
+      "archetype": "operator",
+      "services": {
+        "stripe": {
+          "key_shape": "bearer",
+          "env_vars": ["STRIPE_SECRET_KEY", "STRIPE_PUBLISHABLE_KEY", "STRIPE_WEBHOOK_SECRET"],
+          "key_pattern": "sk_live_*, pk_live_*, whsec_*",
+          "auth_header": "Authorization: Bearer {key}",
+          "has_mcp": true,
+          "notes": "Publishable key is client-safe. Webhook secret is derived."
+        },
+        "square": {
+          "key_shape": "oauth",
+          "env_vars": ["SQUARE_ACCESS_TOKEN", "SQUARE_APPLICATION_ID", "SQUARE_APPLICATION_SECRET"],
+          "key_pattern": "EAAAl*, sq0idp-*, sq0csp-*",
+          "auth_header": "Authorization: Bearer {access_token}",
+          "has_mcp": false,
+          "notes": "OAuth2 with sandbox/production environments. Application ID is public."
+        },
+        "paypal": {
+          "key_shape": "oauth",
+          "env_vars": ["PAYPAL_CLIENT_ID", "PAYPAL_CLIENT_SECRET"],
+          "key_pattern": "client_id + client_secret (no standard prefix)",
+          "auth_header": "Authorization: Basic {base64(client_id:client_secret)}",
+          "has_mcp": false,
+          "notes": "OAuth2 client credentials flow. Sandbox and live environments."
+        },
+        "lemonsqueezy": {
+          "key_shape": "bearer",
+          "env_vars": ["LEMONSQUEEZY_API_KEY", "LEMON_SQUEEZY_API_KEY"],
+          "key_pattern": "eyJ0eXAi* (JWT-shaped)",
+          "auth_header": "Authorization: Bearer {key}",
+          "has_mcp": false,
+          "notes": "Developer-friendly Stripe alternative. REST API with JWT-style keys."
+        },
+        "paddle": {
+          "key_shape": "bearer",
+          "env_vars": ["PADDLE_API_KEY", "PADDLE_VENDOR_ID", "PADDLE_VENDOR_AUTH_CODE"],
+          "key_pattern": "pdl_* (v2 API)",
+          "auth_header": "Authorization: Bearer {key}",
+          "has_mcp": false,
+          "notes": "Merchant of record model. V2 API uses bearer tokens."
+        }
+      }
+    },
+
+    "project_management": {
+      "description": "Issue tracking, project boards, task management",
+      "archetype": "operator",
+      "services": {
+        "linear": {
+          "key_shape": "bearer",
+          "env_vars": ["LINEAR_API_KEY"],
+          "key_pattern": "lin_api_*",
+          "auth_header": "Authorization: {key}",
+          "has_mcp": true,
+          "notes": "GraphQL API. Personal API keys or OAuth apps."
+        },
+        "jira": {
+          "key_shape": "bearer",
+          "env_vars": ["JIRA_API_TOKEN", "JIRA_EMAIL", "JIRA_HOST"],
+          "key_pattern": "base64(email:token) — Atlassian API token",
+          "auth_header": "Authorization: Basic {base64(email:token)}",
+          "has_mcp": true,
+          "notes": "Atlassian API tokens. Requires email + token pair. Cloud vs Data Center APIs differ."
+        },
+        "asana": {
+          "key_shape": "bearer",
+          "env_vars": ["ASANA_ACCESS_TOKEN"],
+          "key_pattern": "1/* (personal access token format)",
+          "auth_header": "Authorization: Bearer {token}",
+          "has_mcp": false,
+          "notes": "Personal access tokens or OAuth2. REST API."
+        },
+        "trello": {
+          "key_shape": "keypair",
+          "env_vars": ["TRELLO_API_KEY", "TRELLO_TOKEN"],
+          "key_pattern": "32-char hex key + 64-char hex token",
+          "auth_header": "query params: key={key}&token={token}",
+          "has_mcp": false,
+          "notes": "API key (public) + token (private) pair. Query param auth, not header."
+        },
+        "notion": {
+          "key_shape": "bearer",
+          "env_vars": ["NOTION_TOKEN", "NOTION_API_KEY"],
+          "key_pattern": "secret_*, ntn_*",
+          "auth_header": "Authorization: Bearer {token}",
+          "has_mcp": true,
+          "notes": "Internal integration tokens or OAuth. Versioned API (Notion-Version header)."
+        },
+        "monday": {
+          "key_shape": "bearer",
+          "env_vars": ["MONDAY_API_KEY"],
+          "key_pattern": "eyJhbGci* (JWT-shaped)",
+          "auth_header": "Authorization: {token}",
+          "has_mcp": false,
+          "notes": "GraphQL API with JWT-style tokens."
+        }
+      }
+    },
+
+    "communication": {
+      "description": "Messaging, email, notifications, chat",
+      "archetype": "communicator",
+      "services": {
+        "slack": {
+          "key_shape": "oauth",
+          "env_vars": ["SLACK_BOT_TOKEN", "SLACK_SIGNING_SECRET", "SLACK_APP_TOKEN"],
+          "key_pattern": "xoxb-* (bot), xoxp-* (user), xapp-* (app-level)",
+          "auth_header": "Authorization: Bearer {token}",
+          "has_mcp": true,
+          "notes": "Multiple token types: bot, user, app-level. Socket Mode for events."
+        },
+        "discord": {
+          "key_shape": "bearer",
+          "env_vars": ["DISCORD_BOT_TOKEN", "DISCORD_TOKEN"],
+          "key_pattern": "MTI* (base64-encoded bot token)",
+          "auth_header": "Authorization: Bot {token}",
+          "has_mcp": false,
+          "notes": "Bot token prefix is 'Bot', not 'Bearer'. Application ID is separate."
+        },
+        "twilio": {
+          "key_shape": "keypair",
+          "env_vars": ["TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN"],
+          "key_pattern": "AC* (SID) + 32-char hex (auth token)",
+          "auth_header": "Authorization: Basic {base64(sid:token)}",
+          "has_mcp": false,
+          "notes": "Account SID + Auth Token pair. Basic auth. Also has API keys for sub-accounts."
+        },
+        "sendgrid": {
+          "key_shape": "bearer",
+          "env_vars": ["SENDGRID_API_KEY"],
+          "key_pattern": "SG.*",
+          "auth_header": "Authorization: Bearer {key}",
+          "has_mcp": false,
+          "notes": "Transactional + marketing email. API key starts with SG."
+        },
+        "resend": {
+          "key_shape": "bearer",
+          "env_vars": ["RESEND_API_KEY"],
+          "key_pattern": "re_*",
+          "auth_header": "Authorization: Bearer {key}",
+          "has_mcp": false,
+          "notes": "Modern email API. Simple bearer auth."
+        },
+        "postmark": {
+          "key_shape": "bearer",
+          "env_vars": ["POSTMARK_API_TOKEN", "POSTMARK_SERVER_TOKEN"],
+          "key_pattern": "UUID format",
+          "auth_header": "X-Postmark-Server-Token: {token}",
+          "has_mcp": false,
+          "notes": "Custom header, not Authorization. Server tokens vs account tokens."
+        },
+        "mailgun": {
+          "key_shape": "keypair",
+          "env_vars": ["MAILGUN_API_KEY", "MAILGUN_DOMAIN"],
+          "key_pattern": "key-* + domain",
+          "auth_header": "Authorization: Basic {base64(api:key)}",
+          "has_mcp": false,
+          "notes": "Basic auth with 'api' as username. Domain-scoped."
+        },
+        "teams": {
+          "key_shape": "oauth",
+          "env_vars": ["TEAMS_APP_ID", "TEAMS_APP_SECRET", "TEAMS_TENANT_ID"],
+          "key_pattern": "UUID format for app/tenant IDs",
+          "auth_header": "Authorization: Bearer {token}",
+          "has_mcp": false,
+          "notes": "Microsoft Graph API. Azure AD OAuth. Complex permissions model."
+        }
+      }
+    },
+
+    "analytics": {
+      "description": "Web analytics, product analytics, event tracking",
+      "archetype": "analyst",
+      "services": {
+        "ga4": {
+          "key_shape": "oauth",
+          "env_vars": ["GA4_CREDENTIALS", "GOOGLE_ANALYTICS_CREDENTIALS"],
+          "key_pattern": "OAuth client JSON or service account JSON",
+          "auth_header": "Authorization: Bearer {access_token}",
+          "has_mcp": false,
+          "notes": "Data API v1. OAuth or service account. Property-scoped."
+        },
+        "mixpanel": {
+          "key_shape": "bearer",
+          "env_vars": ["MIXPANEL_TOKEN", "MIXPANEL_API_SECRET"],
+          "key_pattern": "32-char hex (project token) + API secret",
+          "auth_header": "Authorization: Basic {base64(api_secret:)}",
+          "has_mcp": false,
+          "notes": "Project token (client-safe, for tracking) vs API secret (server, for export)."
+        },
+        "posthog": {
+          "key_shape": "bearer",
+          "env_vars": ["POSTHOG_API_KEY", "POSTHOG_PERSONAL_API_KEY", "POSTHOG_HOST"],
+          "key_pattern": "phc_* (project), phx_* (personal)",
+          "auth_header": "Authorization: Bearer {personal_api_key}",
+          "has_mcp": false,
+          "notes": "Self-hostable. Project key (client-safe) vs personal key (server). Host varies."
+        },
+        "plausible": {
+          "key_shape": "bearer",
+          "env_vars": ["PLAUSIBLE_API_KEY", "PLAUSIBLE_SITE_ID"],
+          "key_pattern": "alphanumeric token",
+          "auth_header": "Authorization: Bearer {key}",
+          "has_mcp": false,
+          "notes": "Privacy-focused. Self-hostable. Simple API."
+        },
+        "amplitude": {
+          "key_shape": "keypair",
+          "env_vars": ["AMPLITUDE_API_KEY", "AMPLITUDE_SECRET_KEY"],
+          "key_pattern": "32-char hex for both",
+          "auth_header": "Authorization: Basic {base64(api_key:secret_key)}",
+          "has_mcp": false,
+          "notes": "API key (client-safe) + secret key (server). Basic auth for export APIs."
+        }
+      }
+    },
+
+    "ai_ml": {
+      "description": "AI inference, embeddings, model hosting, evaluation",
+      "archetype": "researcher",
+      "services": {
+        "anthropic": {
+          "key_shape": "bearer",
+          "env_vars": ["ANTHROPIC_API_KEY"],
+          "key_pattern": "sk-ant-*",
+          "auth_header": "x-api-key: {key}",
+          "has_mcp": false,
+          "notes": "Custom header (x-api-key), not Authorization. Messages API."
+        },
+        "openai": {
+          "key_shape": "bearer",
+          "env_vars": ["OPENAI_API_KEY", "OPENAI_ORG_ID"],
+          "key_pattern": "sk-* (legacy), sk-proj-* (project)",
+          "auth_header": "Authorization: Bearer {key}",
+          "has_mcp": false,
+          "notes": "Project-scoped keys (sk-proj-*) are newer. Org ID is optional header."
+        },
+        "google-ai": {
+          "key_shape": "bearer",
+          "env_vars": ["GOOGLE_AI_API_KEY", "GEMINI_API_KEY"],
+          "key_pattern": "AIza*",
+          "auth_header": "query param: key={key}",
+          "has_mcp": false,
+          "notes": "Google AI Studio / Gemini API. Query param auth. Same key format as other Google APIs."
+        },
+        "huggingface": {
+          "key_shape": "bearer",
+          "env_vars": ["HF_TOKEN", "HUGGINGFACE_TOKEN"],
+          "key_pattern": "hf_*",
+          "auth_header": "Authorization: Bearer {token}",
+          "has_mcp": true,
+          "notes": "Read/write tokens. Hub API, Inference API, Spaces."
+        },
+        "replicate": {
+          "key_shape": "bearer",
+          "env_vars": ["REPLICATE_API_TOKEN"],
+          "key_pattern": "r8_*",
+          "auth_header": "Authorization: Bearer {token}",
+          "has_mcp": false,
+          "notes": "Model hosting. Prediction-based billing."
+        },
+        "cohere": {
+          "key_shape": "bearer",
+          "env_vars": ["COHERE_API_KEY", "CO_API_KEY"],
+          "key_pattern": "alphanumeric (40+ chars)",
+          "auth_header": "Authorization: Bearer {key}",
+          "has_mcp": false,
+          "notes": "Embed, generate, rerank, classify endpoints."
+        },
+        "mistral": {
+          "key_shape": "bearer",
+          "env_vars": ["MISTRAL_API_KEY"],
+          "key_pattern": "alphanumeric",
+          "auth_header": "Authorization: Bearer {key}",
+          "has_mcp": false,
+          "notes": "La Plateforme. OpenAI-compatible endpoint available."
+        },
+        "together": {
+          "key_shape": "bearer",
+          "env_vars": ["TOGETHER_API_KEY"],
+          "key_pattern": "alphanumeric (64 chars)",
+          "auth_header": "Authorization: Bearer {key}",
+          "has_mcp": false,
+          "notes": "Open-source model hosting. OpenAI-compatible API."
+        },
+        "groq": {
+          "key_shape": "bearer",
+          "env_vars": ["GROQ_API_KEY"],
+          "key_pattern": "gsk_*",
+          "auth_header": "Authorization: Bearer {key}",
+          "has_mcp": false,
+          "notes": "Fast inference. OpenAI-compatible API."
+        },
+        "fireworks": {
+          "key_shape": "bearer",
+          "env_vars": ["FIREWORKS_API_KEY"],
+          "key_pattern": "fw_*",
+          "auth_header": "Authorization: Bearer {key}",
+          "has_mcp": false,
+          "notes": "Model hosting and fine-tuning. OpenAI-compatible."
+        }
+      }
+    },
+
+    "hosting": {
+      "description": "Deployment, hosting, serverless, containers",
+      "archetype": "builder",
+      "services": {
+        "vercel": {
+          "key_shape": "bearer",
+          "env_vars": ["VERCEL_TOKEN", "VERCEL_ORG_ID", "VERCEL_PROJECT_ID"],
+          "key_pattern": "alphanumeric (24 chars)",
+          "auth_header": "Authorization: Bearer {token}",
+          "has_mcp": false,
+          "notes": "Personal access tokens or OAuth. REST API v6+."
+        },
+        "netlify": {
+          "key_shape": "bearer",
+          "env_vars": ["NETLIFY_AUTH_TOKEN", "NETLIFY_SITE_ID"],
+          "key_pattern": "alphanumeric",
+          "auth_header": "Authorization: Bearer {token}",
+          "has_mcp": false,
+          "notes": "Personal access tokens. CLI uses same token."
+        },
+        "fly": {
+          "key_shape": "bearer",
+          "env_vars": ["FLY_API_TOKEN"],
+          "key_pattern": "fo1_*",
+          "auth_header": "Authorization: Bearer {token}",
+          "has_mcp": false,
+          "notes": "Deploy tokens or personal tokens. GraphQL and REST APIs."
+        },
+        "railway": {
+          "key_shape": "bearer",
+          "env_vars": ["RAILWAY_TOKEN"],
+          "key_pattern": "alphanumeric",
+          "auth_header": "Authorization: Bearer {token}",
+          "has_mcp": false,
+          "notes": "Project tokens or account tokens. GraphQL API."
+        },
+        "render": {
+          "key_shape": "bearer",
+          "env_vars": ["RENDER_API_KEY"],
+          "key_pattern": "rnd_*",
+          "auth_header": "Authorization: Bearer {key}",
+          "has_mcp": false,
+          "notes": "API keys from dashboard. REST API."
+        },
+        "docker-hub": {
+          "key_shape": "bearer",
+          "env_vars": ["DOCKER_USERNAME", "DOCKER_PASSWORD", "DOCKER_TOKEN"],
+          "key_pattern": "dckr_pat_* (personal access token)",
+          "auth_header": "varies (registry auth flow)",
+          "has_mcp": false,
+          "notes": "Personal access tokens replace passwords. Registry v2 auth flow."
+        }
+      }
+    },
+
+    "version_control": {
+      "description": "Source control, code hosting, CI/CD",
+      "archetype": "builder",
+      "services": {
+        "github": {
+          "key_shape": "bearer",
+          "env_vars": ["GITHUB_TOKEN", "GH_TOKEN"],
+          "key_pattern": "ghp_* (personal), ghs_* (server-to-server), github_pat_* (fine-grained)",
+          "auth_header": "Authorization: Bearer {token}",
+          "has_mcp": true,
+          "notes": "Fine-grained PATs (github_pat_*) replace classic PATs (ghp_*). Apps use JWTs."
+        },
+        "gitlab": {
+          "key_shape": "bearer",
+          "env_vars": ["GITLAB_TOKEN", "GITLAB_PRIVATE_TOKEN"],
+          "key_pattern": "glpat-* (personal access token)",
+          "auth_header": "PRIVATE-TOKEN: {token}",
+          "has_mcp": false,
+          "notes": "Custom header (PRIVATE-TOKEN), not Authorization. Project vs group vs personal tokens."
+        },
+        "bitbucket": {
+          "key_shape": "keypair",
+          "env_vars": ["BITBUCKET_USERNAME", "BITBUCKET_APP_PASSWORD"],
+          "key_pattern": "username + app password (no standard prefix)",
+          "auth_header": "Authorization: Basic {base64(user:password)}",
+          "has_mcp": false,
+          "notes": "App passwords, not API keys. Basic auth. Workspace-scoped."
+        }
+      }
+    },
+
+    "storage": {
+      "description": "Object storage, file hosting, CDN",
+      "archetype": "builder",
+      "services": {
+        "aws-s3": {
+          "key_shape": "keypair",
+          "env_vars": ["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_REGION"],
+          "key_pattern": "AKIA* (access key) + 40-char secret",
+          "auth_header": "AWS Signature V4 (computed)",
+          "has_mcp": false,
+          "notes": "IAM access keys. Signature V4 auth (not bearer). Region-scoped endpoints."
+        },
+        "gcs": {
+          "key_shape": "service_account",
+          "env_vars": ["GOOGLE_APPLICATION_CREDENTIALS"],
+          "key_pattern": "service account JSON",
+          "auth_header": "Authorization: Bearer {access_token}",
+          "has_mcp": false,
+          "notes": "Same service account as other GCP services. OAuth2 access tokens."
+        },
+        "cloudflare-r2": {
+          "key_shape": "keypair",
+          "env_vars": ["R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY", "R2_ENDPOINT"],
+          "key_pattern": "S3-compatible keys",
+          "auth_header": "AWS Signature V4 (S3-compatible)",
+          "has_mcp": false,
+          "notes": "S3-compatible API. No egress fees. Needs account-specific endpoint."
+        },
+        "backblaze-b2": {
+          "key_shape": "keypair",
+          "env_vars": ["B2_APPLICATION_KEY_ID", "B2_APPLICATION_KEY"],
+          "key_pattern": "application key ID + key",
+          "auth_header": "Authorization: Basic {base64(keyId:key)}",
+          "has_mcp": false,
+          "notes": "Native API or S3-compatible. Application keys can be bucket-scoped."
+        }
+      }
+    },
+
+    "auth": {
+      "description": "Authentication, identity, SSO providers",
+      "archetype": "guardian",
+      "services": {
+        "auth0": {
+          "key_shape": "oauth",
+          "env_vars": ["AUTH0_DOMAIN", "AUTH0_CLIENT_ID", "AUTH0_CLIENT_SECRET", "AUTH0_AUDIENCE"],
+          "key_pattern": "domain + client_id + client_secret",
+          "auth_header": "Authorization: Bearer {access_token}",
+          "has_mcp": false,
+          "notes": "Management API uses M2M client credentials. Tenant-scoped domain."
+        },
+        "clerk": {
+          "key_shape": "bearer",
+          "env_vars": ["CLERK_SECRET_KEY", "CLERK_PUBLISHABLE_KEY"],
+          "key_pattern": "sk_live_* (secret), pk_live_* (publishable)",
+          "auth_header": "Authorization: Bearer {secret_key}",
+          "has_mcp": false,
+          "notes": "Stripe-like key naming. Publishable key is client-safe."
+        },
+        "okta": {
+          "key_shape": "bearer",
+          "env_vars": ["OKTA_DOMAIN", "OKTA_API_TOKEN"],
+          "key_pattern": "00* (API token, starts with 00)",
+          "auth_header": "Authorization: SSWS {token}",
+          "has_mcp": false,
+          "notes": "Custom auth scheme (SSWS). Org-scoped domain. SCIM and OAuth also available."
+        },
+        "supabase-auth": {
+          "key_shape": "bearer",
+          "env_vars": ["SUPABASE_URL", "SUPABASE_ANON_KEY", "SUPABASE_SERVICE_KEY"],
+          "key_pattern": "eyJhbGci* (JWT-shaped anon/service keys)",
+          "auth_header": "apikey: {key} + Authorization: Bearer {jwt}",
+          "has_mcp": false,
+          "notes": "GoTrue-based. Anon key for client, service key bypasses RLS."
+        }
+      }
+    },
+
+    "database": {
+      "description": "Database hosting, serverless databases",
+      "archetype": "builder",
+      "services": {
+        "supabase": {
+          "key_shape": "bearer",
+          "env_vars": ["SUPABASE_URL", "SUPABASE_SERVICE_KEY", "DATABASE_URL"],
+          "key_pattern": "eyJhbGci* (JWT) + postgresql:// connection string",
+          "auth_header": "apikey: {key}",
+          "has_mcp": true,
+          "notes": "PostgREST API + direct Postgres connection. Service key for server-side."
+        },
+        "planetscale": {
+          "key_shape": "keypair",
+          "env_vars": ["DATABASE_URL"],
+          "key_pattern": "pscale_pw_* (password in connection string)",
+          "auth_header": "MySQL wire protocol (connection string)",
+          "has_mcp": false,
+          "notes": "MySQL-compatible. Branching databases. Connection string auth."
+        },
+        "neon": {
+          "key_shape": "bearer",
+          "env_vars": ["DATABASE_URL", "NEON_API_KEY"],
+          "key_pattern": "postgresql://...@*.neon.tech (connection string)",
+          "auth_header": "Authorization: Bearer {api_key} (management), connection string (data)",
+          "has_mcp": false,
+          "notes": "Serverless Postgres. API key for management, connection string for data."
+        },
+        "turso": {
+          "key_shape": "bearer",
+          "env_vars": ["TURSO_DATABASE_URL", "TURSO_AUTH_TOKEN"],
+          "key_pattern": "libsql://... + JWT auth token",
+          "auth_header": "Authorization: Bearer {token}",
+          "has_mcp": false,
+          "notes": "Edge SQLite (libSQL). HTTP API with bearer auth."
+        },
+        "mongodb-atlas": {
+          "key_shape": "keypair",
+          "env_vars": ["MONGODB_URI", "MONGODB_API_KEY"],
+          "key_pattern": "mongodb+srv://user:pass@cluster (connection string)",
+          "auth_header": "connection string auth or Data API bearer",
+          "has_mcp": false,
+          "notes": "Connection string for driver, API key for Atlas Admin/Data API."
+        },
+        "redis-cloud": {
+          "key_shape": "keypair",
+          "env_vars": ["REDIS_URL", "REDIS_HOST", "REDIS_PASSWORD"],
+          "key_pattern": "redis://default:password@host:port",
+          "auth_header": "connection string auth",
+          "has_mcp": false,
+          "notes": "Upstash has REST API with bearer auth too."
+        }
+      }
+    },
+
+    "monitoring": {
+      "description": "Error tracking, observability, alerting",
+      "archetype": "builder",
+      "services": {
+        "sentry": {
+          "key_shape": "bearer",
+          "env_vars": ["SENTRY_DSN", "SENTRY_AUTH_TOKEN"],
+          "key_pattern": "https://...@sentry.io/... (DSN) + sntrys_* (auth token)",
+          "auth_header": "Authorization: Bearer {auth_token}",
+          "has_mcp": false,
+          "notes": "DSN is client-safe (for SDK init). Auth token is for API. Org/project scoped."
+        },
+        "datadog": {
+          "key_shape": "keypair",
+          "env_vars": ["DD_API_KEY", "DD_APP_KEY", "DD_SITE"],
+          "key_pattern": "32-char hex (API key) + 40-char hex (app key)",
+          "auth_header": "DD-API-KEY: {api_key}, DD-APPLICATION-KEY: {app_key}",
+          "has_mcp": false,
+          "notes": "API key + application key pair. Custom headers. Site-specific endpoints."
+        },
+        "logsnag": {
+          "key_shape": "bearer",
+          "env_vars": ["LOGSNAG_TOKEN"],
+          "key_pattern": "alphanumeric",
+          "auth_header": "Authorization: Bearer {token}",
+          "has_mcp": false,
+          "notes": "Event tracking and notifications. Simple REST API."
+        },
+        "pagerduty": {
+          "key_shape": "bearer",
+          "env_vars": ["PAGERDUTY_API_KEY", "PAGERDUTY_ROUTING_KEY"],
+          "key_pattern": "alphanumeric",
+          "auth_header": "Authorization: Token token={key}",
+          "has_mcp": false,
+          "notes": "Custom Token auth scheme. Routing keys for event ingestion."
+        },
+        "new-relic": {
+          "key_shape": "bearer",
+          "env_vars": ["NEW_RELIC_API_KEY", "NEW_RELIC_LICENSE_KEY", "NEW_RELIC_ACCOUNT_ID"],
+          "key_pattern": "NRAK-* (user key), license key varies",
+          "auth_header": "Api-Key: {key}",
+          "has_mcp": false,
+          "notes": "Custom Api-Key header. User keys (NRAK-*) vs license keys vs insert keys."
+        }
+      }
+    },
+
+    "cms": {
+      "description": "Content management, headless CMS",
+      "archetype": "builder",
+      "services": {
+        "sanity": {
+          "key_shape": "bearer",
+          "env_vars": ["SANITY_TOKEN", "SANITY_PROJECT_ID", "SANITY_DATASET"],
+          "key_pattern": "sk* (API token)",
+          "auth_header": "Authorization: Bearer {token}",
+          "has_mcp": false,
+          "notes": "GROQ query API. Read tokens are client-safe. Write tokens are server-only."
+        },
+        "contentful": {
+          "key_shape": "bearer",
+          "env_vars": ["CONTENTFUL_SPACE_ID", "CONTENTFUL_ACCESS_TOKEN", "CONTENTFUL_MANAGEMENT_TOKEN"],
+          "key_pattern": "alphanumeric",
+          "auth_header": "Authorization: Bearer {token}",
+          "has_mcp": false,
+          "notes": "Delivery (read) vs management (write) tokens. Space-scoped."
+        },
+        "strapi": {
+          "key_shape": "bearer",
+          "env_vars": ["STRAPI_TOKEN", "STRAPI_URL"],
+          "key_pattern": "alphanumeric (API tokens)",
+          "auth_header": "Authorization: Bearer {token}",
+          "has_mcp": false,
+          "notes": "Self-hosted. API tokens or JWT auth. Content types API."
+        }
+      }
+    },
+
+    "search": {
+      "description": "Search engines, full-text search",
+      "archetype": "builder",
+      "services": {
+        "algolia": {
+          "key_shape": "keypair",
+          "env_vars": ["ALGOLIA_APP_ID", "ALGOLIA_API_KEY", "ALGOLIA_ADMIN_KEY"],
+          "key_pattern": "app ID + search key (client) + admin key (server)",
+          "auth_header": "X-Algolia-API-Key: {key}, X-Algolia-Application-Id: {id}",
+          "has_mcp": false,
+          "notes": "Custom headers. Search-only key is client-safe. Admin key is server-only."
+        },
+        "typesense": {
+          "key_shape": "bearer",
+          "env_vars": ["TYPESENSE_API_KEY", "TYPESENSE_HOST"],
+          "key_pattern": "alphanumeric",
+          "auth_header": "X-TYPESENSE-API-KEY: {key}",
+          "has_mcp": false,
+          "notes": "Custom header. Self-hostable or Typesense Cloud."
+        },
+        "meilisearch": {
+          "key_shape": "bearer",
+          "env_vars": ["MEILI_MASTER_KEY", "MEILI_HOST"],
+          "key_pattern": "alphanumeric",
+          "auth_header": "Authorization: Bearer {key}",
+          "has_mcp": false,
+          "notes": "Self-hostable. Master key generates search/admin keys."
+        }
+      }
+    },
+
+    "dns_cdn": {
+      "description": "DNS management, CDN, edge computing",
+      "archetype": "builder",
+      "services": {
+        "cloudflare": {
+          "key_shape": "bearer",
+          "env_vars": ["CLOUDFLARE_API_TOKEN", "CLOUDFLARE_ZONE_ID", "CLOUDFLARE_ACCOUNT_ID"],
+          "key_pattern": "alphanumeric (API token, not Global API Key)",
+          "auth_header": "Authorization: Bearer {token}",
+          "has_mcp": false,
+          "notes": "API tokens (scoped) replace Global API Key (unscoped). Zone + account IDs needed."
+        },
+        "namecheap": {
+          "key_shape": "bearer",
+          "env_vars": ["NAMECHEAP_API_USER", "NAMECHEAP_API_KEY"],
+          "key_pattern": "alphanumeric",
+          "auth_header": "query params: ApiUser, ApiKey, UserName, ClientIp",
+          "has_mcp": false,
+          "notes": "IP-whitelisted API. Query param auth. Must whitelist calling IP."
+        }
+      }
+    }
+  }
+}

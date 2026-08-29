@@ -1,0 +1,190 @@
+{
+  "_comment": "Key taxonomy — maps key shapes, agent archetypes, and services. Static registry. NO secret values.",
+
+  "key_shapes": {
+    "bearer": {
+      "description": "Single API key string passed as Authorization: Bearer header or query param",
+      "examples": ["Stripe sk_live_...", "AgentMail am_live_...", "HuggingFace hf_..."],
+      "rotation": "Replace key in store, update all consumers",
+      "risk": "Leaked key = full access until rotated"
+    },
+    "oauth": {
+      "description": "OAuth 2.0 client credentials JSON with client_id, client_secret, and refresh_token",
+      "examples": ["Google OAuth client secrets JSON", "Slack OAuth app credentials"],
+      "rotation": "Refresh token auto-rotates access tokens; client secret rotation requires re-consent",
+      "risk": "Refresh token = persistent access; client secret alone is not enough"
+    },
+    "service_account": {
+      "description": "Service account JSON with private key for JWT-based auth (no user interaction)",
+      "examples": ["GCP service account key", "Firebase Admin SDK key"],
+      "rotation": "Generate new key in provider console, delete old key",
+      "risk": "Private key = full service account permissions; hardest to scope"
+    },
+    "keypair": {
+      "description": "Access key ID + secret access key pair",
+      "examples": ["AWS access key + secret key", "Cloudflare API token + account ID"],
+      "rotation": "Create new pair, migrate consumers, delete old pair",
+      "risk": "Both halves needed; leaking one half is limited risk"
+    },
+    "derived": {
+      "description": "Keys that exist because another integration exists — webhook secrets, JWT signing keys, encryption keys",
+      "examples": ["Stripe webhook signing secret", "Supabase JWT secret", "Pinax field encryption key"],
+      "rotation": "Rotation may require updating all signed/encrypted data",
+      "risk": "Often overlooked in rotation schedules; compromise is silent"
+    }
+  },
+
+  "archetypes": {
+    "builder": {
+      "description": "Deploys, tests, manages CI/CD pipelines. Writes code that ships.",
+      "typical_services": ["github", "docker", "vercel", "netlify", "npm", "ci"],
+      "typical_key_shapes": ["bearer", "keypair"],
+      "city_agents": ["mark95"]
+    },
+    "analyst": {
+      "description": "Pulls data, builds reports, runs dashboards. Reads more than writes.",
+      "typical_services": ["ga4", "supabase", "firebase", "mixpanel", "posthog"],
+      "typical_key_shapes": ["oauth", "service_account", "bearer"],
+      "city_agents": ["sofer", "mark42"]
+    },
+    "operator": {
+      "description": "Manages billing, CRM, invoicing, subscriptions. Touches money and customer records.",
+      "typical_services": ["stripe", "supabase-crm", "pinax"],
+      "typical_key_shapes": ["bearer", "derived"],
+      "city_agents": ["sofer"]
+    },
+    "researcher": {
+      "description": "Calls inference APIs, runs embeddings, evaluates models. Token-intensive.",
+      "typical_services": ["anthropic", "openai", "google-ai", "huggingface", "replicate"],
+      "typical_key_shapes": ["bearer"],
+      "city_agents": ["sofer", "mark95"]
+    },
+    "communicator": {
+      "description": "Sends messages, manages notifications, handles email and chat integrations.",
+      "typical_services": ["agentmail", "discord", "slack", "email-smtp"],
+      "typical_key_shapes": ["bearer", "oauth"],
+      "city_agents": ["sofer", "coreforged"]
+    },
+    "guardian": {
+      "description": "Manages auth flows, signs tokens, handles encryption. Security-critical.",
+      "typical_services": ["google-oauth", "supabase-auth", "pinax-crypto", "did-registry"],
+      "typical_key_shapes": ["oauth", "derived", "service_account"],
+      "city_agents": ["sofer"]
+    }
+  },
+
+  "services": {
+    "agentmail": {
+      "key_shape": "bearer",
+      "archetypes": ["communicator"],
+      "env_var_names": ["AGENTMAIL_API_KEY"],
+      "keyring_secrets": ["agentmail-api-key"],
+      "notes": "Agent-to-agent communication backbone"
+    },
+    "stripe": {
+      "key_shape": "bearer",
+      "archetypes": ["operator"],
+      "env_var_names": ["STRIPE_SECRET_KEY", "STRIPE_PUBLISHABLE_KEY"],
+      "keyring_secrets": ["stripe-secret-key", "stripe-publishable-key"],
+      "notes": "Publishable key is client-safe; secret key is server-only"
+    },
+    "firebase": {
+      "key_shape": "service_account",
+      "archetypes": ["analyst", "builder"],
+      "env_var_names": ["GOOGLE_APPLICATION_CREDENTIALS", "FIREBASE_SERVICE_ACCOUNT"],
+      "keyring_secrets": ["firebase-sa-key"],
+      "notes": "Service account JSON; same key works for Firestore, Auth, Storage"
+    },
+    "supabase": {
+      "key_shape": "bearer",
+      "archetypes": ["analyst", "builder"],
+      "env_var_names": ["SUPABASE_URL", "SUPABASE_SERVICE_KEY", "SUPABASE_ANON_KEY"],
+      "keyring_secrets": ["supabase-url", "supabase-service-key"],
+      "notes": "URL + key pair; service key bypasses RLS"
+    },
+    "supabase-pkc": {
+      "key_shape": "bearer",
+      "archetypes": ["analyst", "operator"],
+      "env_var_names": ["PKC_SUPABASE_URL", "PKC_SUPABASE_KEY"],
+      "keyring_secrets": ["pkc-supabase-url", "pkc-supabase-service-key"],
+      "notes": "PatternKind Collective isolated instance"
+    },
+    "supabase-crm": {
+      "key_shape": "bearer",
+      "archetypes": ["operator"],
+      "env_var_names": ["CRM_SUPABASE_URL", "CRM_SUPABASE_KEY"],
+      "keyring_secrets": ["cf-crm-supabase-url", "cf-crm-supabase-key"],
+      "notes": "Pinax CRM isolated instance"
+    },
+    "pinax": {
+      "key_shape": "derived",
+      "archetypes": ["operator", "guardian"],
+      "env_var_names": ["PINAX_CRYPTO_KEY", "PINAX_JWT_SECRET"],
+      "keyring_secrets": ["pinax-crypto-key", "pinax-supabase-jwt-secret"],
+      "notes": "Field encryption key and JWT signing secret; derived from CRM infra"
+    },
+    "pinax-google": {
+      "key_shape": "oauth",
+      "archetypes": ["guardian"],
+      "env_var_names": ["GOOGLE_CLIENT_SECRETS"],
+      "keyring_secrets": ["pinax-google-client-secrets"],
+      "notes": "OAuth client for Pinax Google integration"
+    },
+    "ga4": {
+      "key_shape": "oauth",
+      "archetypes": ["analyst"],
+      "env_var_names": ["GA4_CREDENTIALS", "GOOGLE_ANALYTICS_CREDENTIALS"],
+      "keyring_secrets": ["ga4-credentials"],
+      "notes": "OAuth or service account; adapter auto-detects"
+    },
+    "google-oauth": {
+      "key_shape": "oauth",
+      "archetypes": ["guardian"],
+      "env_var_names": ["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET"],
+      "keyring_secrets": ["google-oauth-578790412002"],
+      "notes": "General-purpose Google OAuth client"
+    },
+    "discord": {
+      "key_shape": "bearer",
+      "archetypes": ["communicator"],
+      "env_var_names": ["DISCORD_BOT_TOKEN", "DISCORD_TOKEN"],
+      "keyring_secrets": ["bifrost-discord-token"],
+      "notes": "Bot token for Bifrost gateway"
+    },
+    "anthropic": {
+      "key_shape": "bearer",
+      "archetypes": ["researcher"],
+      "env_var_names": ["ANTHROPIC_API_KEY"],
+      "keyring_secrets": ["bifrost-claude-api-key", "anthropic-api-key"],
+      "notes": "Two keys: Bifrost-specific and shared across ArtForge/MoleculeEQ/ml-intern"
+    },
+    "huggingface": {
+      "key_shape": "bearer",
+      "archetypes": ["researcher"],
+      "env_var_names": ["HF_TOKEN", "HUGGINGFACE_TOKEN"],
+      "keyring_secrets": ["huggingface-token"],
+      "notes": "Model hub access, inference API, Spaces"
+    },
+    "openai": {
+      "key_shape": "bearer",
+      "archetypes": ["researcher"],
+      "env_var_names": ["OPENAI_API_KEY"],
+      "keyring_secrets": ["promptlabs-openai"],
+      "notes": "PromptLabs multi-provider; used for model comparison"
+    },
+    "google-ai": {
+      "key_shape": "bearer",
+      "archetypes": ["researcher"],
+      "env_var_names": ["GOOGLE_AI_API_KEY", "GEMINI_API_KEY"],
+      "keyring_secrets": ["promptlabs-google"],
+      "notes": "Google AI Studio / Gemini API"
+    },
+    "aws": {
+      "key_shape": "keypair",
+      "archetypes": ["researcher", "builder"],
+      "env_var_names": ["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"],
+      "keyring_secrets": ["promptlabs-aws-access-key", "promptlabs-aws-secret-key"],
+      "notes": "PromptLabs Bedrock access; keypair must be stored as two secrets"
+    }
+  }
+}
