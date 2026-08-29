@@ -292,6 +292,15 @@ def _load_adapters():
     except ImportError:
         log.warning("Discord adapter not available")
 
+    try:
+        from adapters.generic import SERVICE_REGISTRY, make_adapter
+        for svc_name in SERVICE_REGISTRY:
+            if svc_name not in _adapters:
+                _adapters[svc_name] = make_adapter(svc_name)
+        log.info("Generic adapters loaded for %d services", len(SERVICE_REGISTRY))
+    except ImportError:
+        log.warning("Generic adapter not available")
+
 
 def _agentmail_adapter(
     secret: str,
