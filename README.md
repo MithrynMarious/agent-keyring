@@ -98,7 +98,20 @@ The keyring makes the authenticated API call and returns only the response data.
 - **[FRICTION_JOURNAL.md](FRICTION_JOURNAL.md)** — GCP console gotchas (training-data-vs-reality deltas)
 - **[AGENTS.md](AGENTS.md)** — Engineering posture and conventions
 
-## Adding Secrets
+## Populating Secrets
+
+### Bootstrap (recommended — one command)
+
+Scan a machine for scattered credentials, collect them, and populate the keyring:
+
+```bash
+python consolidate.py bootstrap ~/projects ~/.config ~/keys
+# Scans → migrates → ingests → validates. Values stay on disk, never in stdout.
+```
+
+Add `--dry-run` to preview without changing anything. DC-1 safe: the bootstrap prints filenames and counts, never secret values.
+
+### Manual paths
 
 ```bash
 # Interactive (value from stdin, never CLI args)

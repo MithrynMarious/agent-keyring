@@ -721,10 +721,9 @@ def cmd_sync_skeleton(args):
                     "to understand keyring structure. NEVER read .secrets.json "
                     "directly (DC-1).",
         "_instructions": "To add a new secret: (1) Place the value file in "
-                         "C:\\CrystallineCity\\.secrets\\, (2) Run: python "
-                         "tools/keyring/consolidate.py sync-skeleton, (3) Add "
-                         "the entry to secret_manifest.json with description "
-                         "and service.",
+                         ".secrets/, (2) Run: python consolidate.py ingest, "
+                         "(3) Add the entry to secret_manifest.json with "
+                         "description and service.",
     }
 
     for key in secrets:
@@ -890,6 +889,129 @@ def cmd_audit(args):
 
 # ── Main ──
 
+def cmd_bootstrap(args):
+    """One-command keyring setup: scan → migrate → ingest → validate.
+
+    DC-1 safe: secret values are written to .secrets.json on disk but never
+    printed to stdout. The agent sees counts, filenames, and service names only.
+    """
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    secrets_json = os.path.join(script_dir, ".secrets.json")
+    skeleton_json = os.path.join(script_dir, ".secrets.skeleton.json")
+    manifest_json = os.path.join(script_dir, "secret_manifest.json")
+
+    scan_dirs = [os.path.expanduser(d) for d in args.directories]
+    target = os.path.expanduser(args.target) if args.target else os.path.join(
+        script_dir, ".secrets")
+
+    bad = [d for d in scan_dirs if not os.path.isdir(d)]
+    if bad:
+        print(f"ERROR: directories not found: {', '.join(bad)}", file=sys.stderr)
+        return 1
+
+    W = 60
+    print(f"\n{'=' * W}")
+    print(f" BOOTSTRAP {'(DRY RUN)' if args.dry_run else ''}")
+    print(f"{'=' * W}")
+    print(f"  Scan:   {', '.join(scan_dirs)}")
+    print(f"  Target: {target}")
+    print(f"  Output: {script_dir}")
+
+    # Step 1: copy skeleton → .secrets.json if it doesn't exist yet
+    if not os.path.exists(secrets_json):
+        if os.path.exists(skeleton_json):
+            if not args.dry_run:
+                shutil.copy2(skeleton_json, secrets_json)
+            print(f"\n  [1/5] {'Would create' if args.dry_run else 'Created'} "
+                  f".secrets.json from skeleton")
+        else:
+            if not args.dry_run:
+                with open(secrets_json, "w", encoding="utf-8") as f:
+                    json.dump({}, f)
+            print(f"\n  [1/5] {'Would create' if args.dry_run else 'Created'} "
+                  f"empty .secrets.json")
+    else:
+        print(f"\n  [1/5] .secrets.json already exists — keeping it")
+
+    # Step 2: scan for credentials
+    print(f"\n  [2/5] Scanning for credentials...")
+    creds = []
+    for d in scan_dirs:
+        creds.extend(scan_directory(d, verbose=args.verbose))
+
+    if not creds:
+        print(f"    No credentials found in {', '.join(scan_dirs)}")
+        print(f"\n  To add secrets manually:")
+        print(f"    python add_secret.py <secret-name>")
+        print(f"    # paste value, press Enter")
+        return 0
+
+    slots = consolidate(creds)
+    n_services = len({s.service for s in slots})
+    n_conflicts = sum(1 for s in slots if s.has_conflict)
+    print(f"    Found {len(slots)} credential(s) across {n_services} service(s)")
+    if n_conflicts:
+        print(f"    WARNING: {n_conflicts} conflict(s) — same key, different values")
+    for slot in slots:
+        print(f"      {slot.keyring_name:<40} ({slot.service})"
+              f"{' CONFLICT' if slot.has_conflict else ''}")
+
+    # Step 3: migrate files into .secrets/
+    print(f"\n  [3/5] {'Would migrate' if args.dry_run else 'Migrating'} "
+          f"to {target}...")
+    os.makedirs(target, exist_ok=True)
+    migrate_args = argparse.Namespace(
+        directories=scan_dirs,
+        target=target,
+        output_dir=script_dir,
+        client_dir=None,
+        verbose=args.verbose,
+        dry_run=args.dry_run,
+    )
+    cmd_migrate(migrate_args)
+
+    # Step 4: ingest .secrets/ into .secrets.json
+    print(f"\n  [4/5] {'Would ingest' if args.dry_run else 'Ingesting'} "
+          f"from {target}...")
+    ingest_args = argparse.Namespace(
+        secrets_dir=target,
+        dry_run=args.dry_run,
+    )
+    cmd_ingest_secrets_dir(ingest_args)
+
+    # Step 5: validate
+    print(f"\n  [5/5] Validating...")
+    if not args.dry_run and os.path.exists(secrets_json):
+        with open(secrets_json, encoding="utf-8") as f:
+            final = json.load(f)
+        real_keys = [k for k, v in final.items()
+                     if not k.startswith("_") and not re.match(
+                         r"^<[a-z0-9_-]+:[a-z0-9_-]+>$", str(v), re.I)]
+        placeholder_keys = [k for k, v in final.items()
+                            if not k.startswith("_") and re.match(
+                                r"^<[a-z0-9_-]+:[a-z0-9_-]+>$", str(v), re.I)]
+        print(f"    {len(real_keys)} real secret(s) loaded")
+        if placeholder_keys:
+            print(f"    {len(placeholder_keys)} placeholder(s) remaining — "
+                  f"replace in .secrets.json with real values")
+        if n_conflicts:
+            print(f"    {n_conflicts} conflict(s) need manual resolution")
+    elif args.dry_run:
+        print(f"    (skipped — dry run)")
+
+    print(f"\n{'=' * W}")
+    if not args.dry_run:
+        print(f"  Bootstrap complete. Next steps:")
+        print(f"    1. Edit .secrets.json — replace any remaining placeholders")
+        print(f"    2. Review secret_manifest.json — improve descriptions")
+        print(f"    3. Edit permissions.json — grant agent access")
+        print(f"    4. Run: python -c \"from secret_store import LocalFileStore; "
+              f"s = LocalFileStore('.secrets.json'); "
+              f"print(f'{{len(s.list_names())}} secrets loaded')\"")
+    print()
+    return 1 if n_conflicts else 0
+
+
 def main():
     p = argparse.ArgumentParser(
         description="Credential consolidation for Agent Keyring",
@@ -934,11 +1056,20 @@ Examples:
                      help="Path to .secrets/ directory (default: ../../../.secrets)")
     ing.add_argument("--dry-run", action="store_true")
 
+    b = sub.add_parser("bootstrap",
+                       help="One-command setup: scan dirs for creds, migrate, populate keyring")
+    b.add_argument("directories", nargs="+",
+                   help="Directories to scan for scattered credentials")
+    b.add_argument("-t", "--target",
+                   help="Target .secrets/ directory (default: .secrets/ beside this script)")
+    b.add_argument("--dry-run", action="store_true")
+
     args = p.parse_args()
     handlers = {"scan": cmd_scan, "generate": cmd_generate,
                 "migrate": cmd_migrate, "audit": cmd_audit,
                 "sync-skeleton": cmd_sync_skeleton,
-                "ingest": cmd_ingest_secrets_dir}
+                "ingest": cmd_ingest_secrets_dir,
+                "bootstrap": cmd_bootstrap}
     sys.exit(handlers[args.command](args))
 
 
