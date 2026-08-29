@@ -127,6 +127,11 @@ def parse_text_key(path):
         return []
     if not val or len(val) > 50000:
         return []
+    lines = val.split("\n")
+    if len(lines) > 5:
+        return []
+    if len(val) > 2000:
+        return []
     stem = os.path.splitext(os.path.basename(path))[0]
     name = re.sub(r"[^a-zA-Z0-9]+", "-", stem).strip("-").lower()
     return [(name, val)]
@@ -148,7 +153,19 @@ _CONFIG_KEY_PATTERNS = re.compile(r"""(?xi)
       ENABLE_\w+|DISABLE_\w+|USE_\w+|ALLOW_\w+|
       CITY_NAME|TRANSCRIPTION_LANGUAGE|
       FLEET_DIR|FLEET_COMMAND_\w+|
-      VITE_\w+|NEXT_PUBLIC_\w+|REACT_APP_\w+
+      VITE_\w+|NEXT_PUBLIC_\w+|REACT_APP_\w+|
+      # naming/labeling config
+      \w+_NAME|\w+_TITLE|\w+_LABEL|\w+_DESCRIPTION|
+      COMMANDER_NAME|XO_NAME|PROJECT_NAME|
+      # export/path config
+      EXPORT_\w+|OUTPUT_\w+|INPUT_\w+|
+      \w+_DIR|\w+_PATH|\w+_ROOT|\w+_HOME|
+      \w+_BIN|\w+_EXECUTABLE|
+      # feature flags and modes
+      \w+_MODE|\w+_LEVEL|\w+_FORMAT|\w+_TYPE|
+      \w+_ENABLED|\w+_DISABLED|
+      # ecosystem/project descriptors
+      \w+_ECOSYSTEM|\w+_PROJECT_NAME|\w+_VERSION
     )$
 """)
 
@@ -206,6 +223,30 @@ SERVICE_KEYWORDS = {
     "mistral": ("mistral",),
     "rdp": ("rdp-host", "rdp-gateway", "rdp-user"),
     "litify": ("litify",),
+    "github": ("github", "gh-token", "gh-pat"),
+    "pinecone": ("pinecone",),
+    "typesense": ("typesense",),
+    "telegram": ("telegram", "tower-bot"),
+    "deepgram": ("deepgram",),
+    "eddy": ("eddy-client", "eddy-api"),
+    "postgres": ("database-url", "postgres", "pgpassword"),
+    "redis": ("redis-password", "redis-token"),
+    "sendgrid": ("sendgrid",),
+    "twilio": ("twilio",),
+    "elevenlabs": ("elevenlabs",),
+    "replicate": ("replicate",),
+    "linear": ("linear-api",),
+    "vercel": ("vercel",),
+    "cloudflare": ("cloudflare",),
+    "sentry": ("sentry",),
+    "datadog": ("datadog",),
+    "slack": ("slack-token", "slack-webhook", "slack-bot"),
+    "notion": ("notion",),
+    "airtable": ("airtable",),
+    "mongodb": ("mongodb", "mongo-uri"),
+    "docker": ("docker-token", "docker-password"),
+    "npm": ("npm-token",),
+    "pypi": ("pypi-token",),
 }
 
 
@@ -278,11 +319,19 @@ def _is_json_cred(name):
     )
 
 
+_NON_SECRET_TEXT_PATTERNS = re.compile(r"""(?xi)
+    (readme|table_|requirements_|cover.?letter|resume|
+     capitalone|rapid7|director|\.log$|changelog|license)
+""")
+
+
 def _is_text_key(name):
     lo = name.lower()
     if lo.endswith((".jpg", ".png", ".gif", ".jpeg", ".py", ".js", ".md")):
         return False
     if "dead" in lo or "expired" in lo or "old" in lo:
+        return False
+    if _NON_SECRET_TEXT_PATTERNS.search(lo):
         return False
     if lo.endswith(".txt"):
         return any(kw in lo for kw in ("key", "token", "secret", "api", "credential"))
@@ -1069,14 +1118,290 @@ def cmd_bootstrap(args):
     print(f"\n{'=' * W}")
     if not args.dry_run:
         print(f"  Bootstrap complete. Next steps:")
-        print(f"    1. Edit .secrets.json — replace any remaining placeholders")
-        print(f"    2. Review secret_manifest.json — improve descriptions")
-        print(f"    3. Edit permissions.json — grant agent access")
-        print(f"    4. Run: python -c \"from secret_store import LocalFileStore; "
+        if n_conflicts:
+            print(f"    1. Resolve {n_conflicts} conflict(s) — "
+                  f"see conflicts.json or run: python consolidate.py resolve")
+        print(f"    {'2' if n_conflicts else '1'}. Edit .secrets.json — "
+              f"replace any remaining placeholders")
+        print(f"    {'3' if n_conflicts else '2'}. Review secret_manifest.json "
+              f"— improve descriptions")
+        print(f"    {'4' if n_conflicts else '3'}. Edit permissions.json — "
+              f"grant agent access")
+        print(f"    {'5' if n_conflicts else '4'}. Run: python -c "
+              f"\"from secret_store import LocalFileStore; "
               f"s = LocalFileStore('.secrets.json'); "
               f"print(f'{{len(s.list_names())}} secrets loaded')\"")
     print()
-    return 1 if n_conflicts else 0
+    return 0
+
+
+def cmd_resolve(args):
+    """Auto-resolve conflicts by creating scoped key variants.
+
+    For each conflict: the newest source file becomes the default (bare name),
+    other sources become scoped variants (name:scope). Metadata is written to
+    key_metadata.json for labeling and status tracking.
+    """
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    secrets_path = os.path.join(script_dir, ".secrets.json")
+    metadata_path = os.path.join(script_dir, "key_metadata.json")
+    conflicts_path = os.path.join(script_dir, "conflicts.json")
+
+    if not os.path.exists(secrets_path):
+        print("No .secrets.json found.", file=sys.stderr)
+        return 1
+
+    if args.conflicts_file:
+        conflicts_path = args.conflicts_file
+
+    if not os.path.exists(conflicts_path):
+        scan_dirs = [os.path.expanduser(d) for d in (args.directories or [])]
+        if not scan_dirs:
+            print("No conflicts.json found and no directories given to scan.",
+                  file=sys.stderr)
+            return 1
+        creds = []
+        for d in scan_dirs:
+            if os.path.isdir(d):
+                creds.extend(scan_directory(d, verbose=args.verbose))
+        slots = consolidate(creds)
+        conflict_slots = [s for s in slots if s.has_conflict]
+    else:
+        with open(conflicts_path, encoding="utf-8") as f:
+            conflict_data = json.load(f)
+        conflict_slots = None
+
+    with open(secrets_path, encoding="utf-8") as f:
+        secrets = json.load(f)
+
+    metadata = {}
+    if os.path.exists(metadata_path):
+        with open(metadata_path, encoding="utf-8") as f:
+            metadata = json.load(f)
+
+    if conflict_slots is not None:
+        items = []
+        for slot in conflict_slots:
+            by_hash = defaultdict(list)
+            for src, var, h in slot.sources:
+                by_hash[h].append({"source": src, "var_name": var})
+            items.append({
+                "keyring_name": slot.keyring_name,
+                "service": slot.service,
+                "variants": [{"hash": h, "sources": srcs}
+                             for h, srcs in by_hash.items()],
+            })
+    else:
+        items = conflict_data
+
+    resolved = 0
+    for conflict in items:
+        name = conflict["keyring_name"]
+        svc = conflict.get("service", "unknown")
+        variants = conflict["variants"]
+        if len(variants) < 2:
+            continue
+
+        all_sources = []
+        for v in variants:
+            for s in v["sources"]:
+                src = s["source"] if isinstance(s, dict) else s
+                all_sources.append((src, v["hash"]))
+
+        best_source = all_sources[0][0]
+        best_mtime = 0
+        for src, _ in all_sources:
+            full = src
+            if not os.path.isabs(full):
+                for base in (script_dir, os.path.expanduser("~")):
+                    candidate = os.path.join(base, full)
+                    if os.path.exists(candidate):
+                        full = candidate
+                        break
+            try:
+                mt = os.path.getmtime(full)
+            except OSError:
+                mt = 0
+            if mt > best_mtime:
+                best_mtime = mt
+                best_source = src
+
+        for v in variants:
+            for s in v["sources"]:
+                src = s["source"] if isinstance(s, dict) else s
+                scope = _derive_scope(src)
+                scoped_name = f"{name}:{scope}"
+                if src == best_source:
+                    metadata[name] = {
+                        "label": f"Default ({scope})",
+                        "source": src,
+                        "service": svc,
+                        "status": "active",
+                        "added": date.today().isoformat(),
+                    }
+                    if args.verbose:
+                        print(f"  {name} <- {src} (default, newest)")
+                else:
+                    if scoped_name not in secrets:
+                        secrets[scoped_name] = secrets.get(name, "")
+                    metadata[scoped_name] = {
+                        "label": f"Variant from {scope}",
+                        "source": src,
+                        "service": svc,
+                        "status": "unverified",
+                        "added": date.today().isoformat(),
+                    }
+                    if args.verbose:
+                        print(f"  {scoped_name} <- {src} (variant)")
+
+        resolved += 1
+
+    if not resolved:
+        print("No conflicts to resolve.")
+        return 0
+
+    if args.dry_run:
+        print(f"DRY RUN — would resolve {resolved} conflict(s)")
+        for name, meta in sorted(metadata.items()):
+            print(f"  {name:<45} [{meta['status']}] {meta['label']}")
+        return 0
+
+    with open(secrets_path, "w", encoding="utf-8") as f:
+        json.dump(secrets, f, indent=2, ensure_ascii=False)
+        f.write("\n")
+
+    with open(metadata_path, "w", encoding="utf-8") as f:
+        json.dump(metadata, f, indent=2, ensure_ascii=False)
+        f.write("\n")
+
+    print(f"Resolved {resolved} conflict(s):")
+    for name, meta in sorted(metadata.items()):
+        print(f"  {name:<45} [{meta['status']}] {meta['label']}")
+    print(f"\nWrote: {metadata_path}")
+    print(f"Updated: {secrets_path}")
+    return 0
+
+
+def _derive_scope(source_path):
+    """Derive a scope label from a source file path."""
+    stem = os.path.splitext(os.path.basename(source_path))[0].lower()
+    stem = re.sub(r"[^a-z0-9]+", "-", stem).strip("-")
+    for noise in ("env", "local", "secrets"):
+        stem = stem.replace(noise, "").strip("-")
+    return stem if stem else "alt"
+
+
+def cmd_keys(args):
+    """List and manage key variants and metadata."""
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    secrets_path = os.path.join(script_dir, ".secrets.json")
+    metadata_path = os.path.join(script_dir, "key_metadata.json")
+
+    if not os.path.exists(secrets_path):
+        print("No .secrets.json found.", file=sys.stderr)
+        return 1
+
+    with open(secrets_path, encoding="utf-8") as f:
+        secrets = json.load(f)
+
+    metadata = {}
+    if os.path.exists(metadata_path):
+        with open(metadata_path, encoding="utf-8") as f:
+            metadata = json.load(f)
+
+    real_keys = {k for k in secrets if not k.startswith("_")}
+    base_keys = {}
+    for k in sorted(real_keys):
+        if ":" in k:
+            base, scope = k.rsplit(":", 1)
+            base_keys.setdefault(base, []).append(scope)
+        else:
+            base_keys.setdefault(k, [])
+
+    action = args.action
+
+    if action == "list":
+        print(f"\n{'=' * 60}")
+        print(f" KEY INVENTORY — {len(real_keys)} entries, "
+              f"{len(base_keys)} base keys")
+        print(f"{'=' * 60}")
+        for base in sorted(base_keys):
+            meta = metadata.get(base, {})
+            status = meta.get("status", "unknown")
+            label = meta.get("label", "")
+            scopes = base_keys[base]
+            print(f"\n  {base} [{status}]"
+                  f"{f' — {label}' if label else ''}")
+            for scope in scopes:
+                scoped = f"{base}:{scope}"
+                smeta = metadata.get(scoped, {})
+                sstatus = smeta.get("status", "unknown")
+                slabel = smeta.get("label", "")
+                print(f"    :{scope} [{sstatus}]"
+                      f"{f' — {slabel}' if slabel else ''}")
+        print()
+        return 0
+
+    if action == "expire":
+        target = args.key_name
+        if target not in real_keys:
+            print(f"Key not found: {target}", file=sys.stderr)
+            return 1
+        metadata.setdefault(target, {})["status"] = "expired"
+        metadata[target]["expired_date"] = date.today().isoformat()
+        with open(metadata_path, "w", encoding="utf-8") as f:
+            json.dump(metadata, f, indent=2, ensure_ascii=False)
+            f.write("\n")
+        print(f"Marked {target} as expired.")
+        return 0
+
+    if action == "activate":
+        target = args.key_name
+        if target not in real_keys:
+            print(f"Key not found: {target}", file=sys.stderr)
+            return 1
+        metadata.setdefault(target, {})["status"] = "active"
+        metadata[target].pop("expired_date", None)
+        with open(metadata_path, "w", encoding="utf-8") as f:
+            json.dump(metadata, f, indent=2, ensure_ascii=False)
+            f.write("\n")
+        print(f"Marked {target} as active.")
+        return 0
+
+    if action == "promote":
+        target = args.key_name
+        if ":" not in target:
+            print("promote requires a scoped key (name:scope)", file=sys.stderr)
+            return 1
+        base, scope = target.rsplit(":", 1)
+        if target not in secrets:
+            print(f"Scoped key not found: {target}", file=sys.stderr)
+            return 1
+        old_default = secrets.get(base)
+        if old_default is not None:
+            old_scope = metadata.get(base, {}).get("label", "previous")
+            old_scope_name = re.sub(r"[^a-z0-9]+", "-",
+                                    old_scope.lower()).strip("-") or "old"
+            demoted = f"{base}:{old_scope_name}"
+            secrets[demoted] = old_default
+            metadata[demoted] = metadata.get(base, {}).copy()
+            metadata[demoted]["status"] = "demoted"
+        secrets[base] = secrets.pop(target)
+        metadata[base] = metadata.pop(target, {})
+        metadata[base]["status"] = "active"
+        with open(secrets_path, "w", encoding="utf-8") as f:
+            json.dump(secrets, f, indent=2, ensure_ascii=False)
+            f.write("\n")
+        with open(metadata_path, "w", encoding="utf-8") as f:
+            json.dump(metadata, f, indent=2, ensure_ascii=False)
+            f.write("\n")
+        print(f"Promoted {target} to default {base}.")
+        if old_default:
+            print(f"Previous default demoted to {demoted}.")
+        return 0
+
+    print(f"Unknown action: {action}", file=sys.stderr)
+    return 1
 
 
 def main():
@@ -1131,12 +1456,30 @@ Examples:
                    help="Target .secrets/ directory (default: .secrets/ beside this script)")
     b.add_argument("--dry-run", action="store_true")
 
+    r = sub.add_parser("resolve",
+                       help="Auto-resolve conflicts to scoped key variants with metadata")
+    r.add_argument("directories", nargs="*",
+                   help="Source dirs to re-scan (optional if conflicts.json exists)")
+    r.add_argument("--conflicts-file",
+                   help="Path to conflicts.json (default: beside this script)")
+    r.add_argument("--dry-run", action="store_true")
+
+    k = sub.add_parser("keys",
+                       help="List and manage key variants and metadata")
+    k.add_argument("action", choices=["list", "expire", "activate", "promote"],
+                   help="list: show all keys; expire/activate: change status; "
+                        "promote: make a scoped key the default")
+    k.add_argument("key_name", nargs="?",
+                   help="Key name (required for expire/activate/promote)")
+
     args = p.parse_args()
     handlers = {"scan": cmd_scan, "generate": cmd_generate,
                 "migrate": cmd_migrate, "audit": cmd_audit,
                 "sync-skeleton": cmd_sync_skeleton,
                 "ingest": cmd_ingest_secrets_dir,
-                "bootstrap": cmd_bootstrap}
+                "bootstrap": cmd_bootstrap,
+                "resolve": cmd_resolve,
+                "keys": cmd_keys}
     sys.exit(handlers[args.command](args))
 
 

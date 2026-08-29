@@ -61,6 +61,34 @@ class TestLocalFileStore:
         second = store.list_names()
         assert first == second
 
+    def test_scoped_key_retrieval(self, tmp_path):
+        secrets = {
+            "anthropic-api-key": "sk-default",
+            "anthropic-api-key:fleet": "sk-fleet",
+            "anthropic-api-key:mcp": "sk-mcp",
+        }
+        path = tmp_path / ".secrets.json"
+        path.write_text(json.dumps(secrets), encoding="utf-8")
+        store = LocalFileStore(str(path))
+        assert store.get("anthropic-api-key") == "sk-default"
+        assert store.get("anthropic-api-key", scope="fleet") == "sk-fleet"
+        assert store.get("anthropic-api-key", scope="mcp") == "sk-mcp"
+        assert store.get("anthropic-api-key", scope="missing") == "sk-default"
+
+    def test_list_variants(self, tmp_path):
+        secrets = {
+            "api-key": "default",
+            "api-key:v1": "variant1",
+            "api-key:v2": "variant2",
+            "other-key": "other",
+        }
+        path = tmp_path / ".secrets.json"
+        path.write_text(json.dumps(secrets), encoding="utf-8")
+        store = LocalFileStore(str(path))
+        variants = store.list_variants("api-key")
+        assert sorted(variants) == ["api-key:v1", "api-key:v2"]
+        assert store.list_variants("other-key") == []
+
     def test_placeholder_values_filtered(self, tmp_path):
         secrets = {
             "_comment": "metadata ignored",

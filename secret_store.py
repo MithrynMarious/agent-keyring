@@ -18,8 +18,9 @@ log = logging.getLogger("keyring.store")
 
 class SecretStore(abc.ABC):
     @abc.abstractmethod
-    def get(self, name: str) -> str | None:
-        """Return secret value by name, or None if not found."""
+    def get(self, name: str, scope: str | None = None) -> str | None:
+        """Return secret value by name, or None if not found.
+        If scope is given, try name:scope first, fall back to name."""
 
     @abc.abstractmethod
     def list_names(self) -> list[str]:
@@ -34,12 +35,14 @@ class LocalFileStore(SecretStore):
     """Reads secrets from a local JSON file. Phase 1 backend.
 
     File format: {"secret-name": "secret-value", ...}
+    Scoped keys use colon separator: {"api-key:fleet": "value"}
     The file MUST be gitignored and should live outside the repo.
     """
 
     def __init__(self, path: str):
         self._path = path
         self._cache: dict[str, str] | None = None
+        self._metadata: dict | None = None
 
     _PLACEHOLDER_RE = re.compile(r"^<[a-z0-9_-]+:[a-z0-9_-]+>$", re.IGNORECASE)
 
@@ -88,11 +91,36 @@ class LocalFileStore(SecretStore):
         with open(full_path, encoding="utf-8", errors="replace") as f:
             return f.read().strip()
 
-    def get(self, name: str) -> str | None:
-        return self._resolve(self._load().get(name))
+    def _load_metadata(self) -> dict:
+        if self._metadata is not None:
+            return self._metadata
+        meta_path = os.path.splitext(self._path)[0] + "_metadata.json"
+        if not os.path.exists(meta_path):
+            meta_path = os.path.join(os.path.dirname(self._path), "key_metadata.json")
+        if os.path.exists(meta_path):
+            with open(meta_path, encoding="utf-8") as f:
+                self._metadata = json.load(f)
+        else:
+            self._metadata = {}
+        return self._metadata
+
+    def get(self, name: str, scope: str | None = None) -> str | None:
+        secrets = self._load()
+        if scope:
+            scoped = f"{name}:{scope}"
+            if scoped in secrets:
+                return self._resolve(secrets[scoped])
+        return self._resolve(secrets.get(name))
 
     def list_names(self) -> list[str]:
         return list(self._load().keys())
+
+    def list_variants(self, name: str) -> list[str]:
+        prefix = f"{name}:"
+        return [k for k in self._load() if k.startswith(prefix)]
+
+    def get_metadata(self, name: str) -> dict | None:
+        return self._load_metadata().get(name)
 
     def exists(self, name: str) -> bool:
         return name in self._load()
@@ -392,14 +420,15 @@ class GCPSecretManagerStore(SecretStore):
 
     # --- SecretStore interface ---
 
-    def get(self, name: str) -> str | None:
+    def get(self, name: str, scope: str | None = None) -> str | None:
         import time as _time
 
-        cached = self._value_cache.get(name)
+        lookup = f"{name}:{scope}" if scope else name
+        cached = self._value_cache.get(lookup)
         if cached and _time.time() < cached[1]:
             return cached[0]
 
-        gcp_name = self._gcp_name(name)
+        gcp_name = self._gcp_name(lookup)
 
         if self._try_library():
             return self._get_via_library(name, gcp_name)

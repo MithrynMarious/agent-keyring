@@ -133,6 +133,7 @@ def keyring_authenticated_request(
     endpoint: str = "",
     params: dict | None = None,
     body: dict | None = None,
+    scope: str | None = None,
     purpose: str | None = None,
     did: str | None = None,
     agentmail_token: str | None = None,
@@ -150,6 +151,7 @@ def keyring_authenticated_request(
         endpoint: API endpoint path (appended to service base URL).
         params: Query parameters for the request.
         body: JSON body for POST/PUT requests.
+        scope: Optional scope for multi-value keys (e.g. 'fleet', 'mcp'). When set, tries secret_name:scope first, falls back to secret_name.
         purpose: Why this request is being made (logged to ledger).
         did: Agent's DID for identity verification.
         agentmail_token: AgentMail API key for identity fallback.
@@ -166,9 +168,10 @@ def keyring_authenticated_request(
             "hint": "Check permissions.json or request access from the Magistrate.",
         }
 
-    secret_value = store.get(secret_name)
+    secret_value = store.get(secret_name, scope=scope)
     if secret_value is None:
-        return {"error": f"Secret '{secret_name}' not found in store."}
+        hint = f" (scope: {scope})" if scope else ""
+        return {"error": f"Secret '{secret_name}'{hint} not found in store."}
 
     record_checkout(
         agent_id=identity.agent_id,
