@@ -132,6 +132,53 @@ def parse_text_key(path):
     return [(name, val)]
 
 
+# ── Config vs Credential filtering ──
+
+_CONFIG_KEY_PATTERNS = re.compile(r"""(?xi)
+    ^(                          # env var names that are config, not secrets
+      DEBUG|VERBOSE|LOG_LEVEL|LOGLEVEL|NODE_ENV|ENVIRONMENT|ENV|
+      PORT|HOST|HOSTNAME|BIND_ADDRESS|LISTEN|
+      DATABASE_URL|DB_HOST|DB_PORT|DB_NAME|DB_USER|
+      REDIS_URL|REDIS_HOST|REDIS_PORT|
+      APP_NAME|APP_URL|APP_ENV|APP_DEBUG|
+      BASE_URL|SITE_URL|SITE_NAME|PUBLIC_URL|NEXT_PUBLIC_URL|
+      TZ|TIMEZONE|LANG|LANGUAGE|LOCALE|
+      MAX_\w+|MIN_\w+|TIMEOUT|RATE_LIMIT|BATCH_SIZE|
+      WORKERS|THREADS|CONCURRENCY|
+      ENABLE_\w+|DISABLE_\w+|USE_\w+|ALLOW_\w+|
+      CITY_NAME|TRANSCRIPTION_LANGUAGE|
+      FLEET_DIR|FLEET_COMMAND_\w+|
+      VITE_\w+|NEXT_PUBLIC_\w+|REACT_APP_\w+
+    )$
+""")
+
+_CONFIG_VALUE_PATTERNS = re.compile(r"""(?xi)
+    ^(                          # values that are config, not secrets
+      true|false|yes|no|on|off|
+      none|null|undefined|
+      \d{1,5}|                  # plain numbers (ports, counts)
+      [\w.-]+\.[\w.-]+          # hostnames like localhost, 0.0.0.0
+    )$
+""")
+
+_SECRET_KEY_SIGNALS = re.compile(r"""(?xi)
+    (KEY|TOKEN|SECRET|PASSWORD|PASS|CREDENTIAL|AUTH|API.?KEY|
+     PRIVATE|CERT|BEARER|ACCESS.?KEY|CLIENT.?SECRET)
+""")
+
+
+def _is_config_not_secret(key, value):
+    """Return True if this env var looks like config, not a credential."""
+    upper = key.upper().replace("-", "_")
+    if _CONFIG_KEY_PATTERNS.match(upper):
+        if not _SECRET_KEY_SIGNALS.search(upper):
+            return True
+    if _CONFIG_VALUE_PATTERNS.match(value):
+        if not _SECRET_KEY_SIGNALS.search(upper):
+            return True
+    return False
+
+
 # ── Classification ──
 
 SERVICE_KEYWORDS = {
@@ -207,9 +254,18 @@ SKIP_DIRS = frozenset({
 })
 
 
+_ENV_TEMPLATE_SUFFIXES = frozenset({
+    ".example", ".sample", ".template", ".defaults", ".dist",
+})
+
 def _is_env(name):
     lo = name.lower()
-    return lo == ".env" or lo.startswith(".env.") or lo.endswith(".env")
+    if not (lo == ".env" or lo.startswith(".env.") or lo.endswith(".env")):
+        return False
+    for suffix in _ENV_TEMPLATE_SUFFIXES:
+        if lo.endswith(suffix):
+            return False
+    return True
 
 
 def _is_json_cred(name):
@@ -260,9 +316,20 @@ def scan_directory(root, verbose=False):
 
             pairs = []
             if _is_env(name):
-                pairs = parse_env(filepath)
+                raw_pairs = parse_env(filepath)
+                config_skipped = 0
+                pairs = []
+                for k, v in raw_pairs:
+                    if _is_config_not_secret(k, v):
+                        config_skipped += 1
+                    else:
+                        pairs.append((k, v))
                 if verbose:
-                    print(f"  env  {relpath} ({len(pairs)} vars)", file=sys.stderr)
+                    msg = f"  env  {relpath} ({len(pairs)} creds"
+                    if config_skipped:
+                        msg += f", {config_skipped} config skipped"
+                    msg += ")"
+                    print(msg, file=sys.stderr)
             elif _is_json_cred(name):
                 pairs = parse_json_credential(filepath)
                 if verbose:
